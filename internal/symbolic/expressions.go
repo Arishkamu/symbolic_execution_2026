@@ -104,10 +104,18 @@ type BinaryOperation struct {
 	Operator BinaryOperator
 }
 
-// TODO: Реализуйте следующие методы в рамках домашнего задания
-
 // NewBinaryOperation создаёт новую бинарную операцию
 func NewBinaryOperation(left, right SymbolicExpression, op BinaryOperator) *BinaryOperation {
+	// TODO fix when new types added
+	if (left == nil || right == nil) {
+		panic("Unexpected expression. Binary operation expect two valid expressions")
+	}
+	if (left.Type() != right.Type()) {
+		panic(fmt.Sprintf("Unexpected expression. Expect equal types for left and right, got left.Type=%s right.Type=%s", left.Type(), right.Type()))
+	}
+	if ((op == EQ || op == NE) && left.Type() != IntType) {
+		panic(fmt.Sprintf("Unexpected expression. Operation '%s' defined only for IntType but operands have=%s", op, left.Type()))
+	}  
 	return &BinaryOperation{Left: left, Right: right, Operator: op}
 }
 
@@ -137,10 +145,15 @@ type LogicalOperation struct {
 	Operator LogicalOperator
 }
 
-// TODO: Реализуйте следующие методы в рамках домашнего задания
-
 // NewLogicalOperation создаёт новую логическую операцию
 func NewLogicalOperation(operands []SymbolicExpression, op LogicalOperator) *LogicalOperation {
+	n := len(operands)
+	if ((op == AND || op == OR) && n < 2) {
+		panic(fmt.Sprintf("Unexpected number of argument for %s. Expected at least 2, got %d", op, n))
+	}
+	if ((op == NOT && n != 1) || (op == IMPLIES && op != 2)) {
+		panic(fmt.Sprintf("Unexpected number of argument for %s, got %d", op, n))
+	}  
 	return &LogicalOperation{Operands: operands, Operator: op}
 }
 

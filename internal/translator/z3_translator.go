@@ -135,11 +135,11 @@ func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) int
 		case symbolic.LT:
 			return leftInt.LT(rightInt)
 		case symbolic.LE:
-			return leftInt.Add(rightInt)
+			return leftInt.LE(rightInt)
 		case symbolic.GT: 
-			return leftInt.Add(rightInt)
+			return leftInt.GT(rightInt)
 		case symbolic.GE:
-			return leftInt.Add(rightInt)
+			return leftInt.GE(rightInt)
 		default:
 			panic(fmt.Errorf("Operation '%s' not supported for int expressions", expr.Operator))
 		}
