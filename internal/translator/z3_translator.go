@@ -85,12 +85,12 @@ func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) int
 	// - Сравнения: left.Eq(right), left.LT(right), left.LE(right), etc.
 	// - Приводите типы: left.(z3.Int), right.(z3.Int) для int операций
 
-	left  :=  expr.Left.Accept(zt)
+	left := expr.Left.Accept(zt)
 	right := expr.Right.Accept(zt)
 
 	switch expr.Left.Type() {
 	case symbolic.BoolType:
-		leftBool, err  := zt.castToZ3BoolType(left)
+		leftBool, err := zt.castToZ3BoolType(left)
 		if err != nil {
 			panic(fmt.Errorf("Error in binary operation: left operand: %w", err))
 		}
@@ -108,7 +108,7 @@ func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) int
 		}
 
 	case symbolic.IntType:
-		leftInt, err  := zt.castToZ3IntType(left)
+		leftInt, err := zt.castToZ3IntType(left)
 		if err != nil {
 			panic(fmt.Errorf("Error in binary operation: left operand: %w", err))
 		}
@@ -136,7 +136,7 @@ func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) int
 			return leftInt.LT(rightInt)
 		case symbolic.LE:
 			return leftInt.LE(rightInt)
-		case symbolic.GT: 
+		case symbolic.GT:
 			return leftInt.GT(rightInt)
 		case symbolic.GE:
 			return leftInt.GE(rightInt)
@@ -162,7 +162,7 @@ func (zt *Z3Translator) VisitLogicalOperation(expr *symbolic.LogicalOperation) i
 
 	boolOperands := make([]z3.Bool, len(expr.Operands))
 	for i, operand := range expr.Operands {
-		vBool, err  := zt.castToZ3BoolType(operand.Accept(zt))
+		vBool, err := zt.castToZ3BoolType(operand.Accept(zt))
 		if err != nil {
 			panic(fmt.Errorf("Error in logic operation: operand is not bool: %w", err))
 		}

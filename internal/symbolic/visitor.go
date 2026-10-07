@@ -16,38 +16,38 @@ type Visitor interface {
 
 // Пример реализации - вывод выражения в строку
 type StringPrinter struct {
-    result strings.Builder
+	result strings.Builder
 }
 
 func (sp *StringPrinter) VisitVariable(expr *SymbolicVariable) interface{} {
-    sp.result.WriteString(expr.String())
+	sp.result.WriteString(expr.String())
 	return nil
 }
 
 func (sp *StringPrinter) VisitIntConstant(expr *IntConstant) interface{} {
-    sp.result.WriteString(expr.String())
+	sp.result.WriteString(expr.String())
 	return nil
 }
 
 func (sp *StringPrinter) VisitBoolConstant(expr *BoolConstant) interface{} {
-    sp.result.WriteString(expr.String())
+	sp.result.WriteString(expr.String())
 	return nil
 }
 
 func (sp *StringPrinter) VisitBinaryOperation(expr *BinaryOperation) interface{} {
-    sp.result.WriteString("(")
-    expr.Left.Accept(sp)
-    sp.result.WriteString(" ")
-    sp.result.WriteString(expr.Operator.String())
-    sp.result.WriteString(" ")
-    expr.Right.Accept(sp)
-    sp.result.WriteString(")")
+	sp.result.WriteString("(")
+	expr.Left.Accept(sp)
+	sp.result.WriteString(" ")
+	sp.result.WriteString(expr.Operator.String())
+	sp.result.WriteString(" ")
+	expr.Right.Accept(sp)
+	sp.result.WriteString(")")
 
-    return nil
+	return nil
 }
 
 func (sp *StringPrinter) VisitLogicalOperation(expr *LogicalOperation) interface{} {
-    switch expr.Operator {
+	switch expr.Operator {
 	case NOT:
 		sp.result.WriteString("!")
 		expr.Operands[0].Accept(sp)
@@ -73,5 +73,5 @@ func (sp *StringPrinter) VisitLogicalOperation(expr *LogicalOperation) interface
 		return nil
 	default:
 		return nil
-    }
+	}
 }
