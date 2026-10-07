@@ -2,8 +2,10 @@
 package translator
 
 import (
-	"github.com/ebukreev/go-z3/z3"
+	"fmt"
 	"symbolic-execution-course/internal/symbolic"
+
+	"github.com/ebukreev/go-z3/z3"
 )
 
 // Z3Translator транслирует символьные выражения в Z3 формулы
@@ -54,28 +56,22 @@ func (zt *Z3Translator) VisitVariable(expr *symbolic.SymbolicVariable) interface
 	// Если нет - создать новую Z3 переменную соответствующего типа
 	// Добавить в кэш и вернуть
 
-	// Подсказки:
-	// - Используйте zt.ctx.IntConst(name) для int переменных
-	// - Используйте zt.ctx.BoolConst(name) для bool переменных
-	// - Храните переменные в zt.vars для повторного использования
-
-	panic("не реализовано")
+	if value, ok := zt.vars[expr.Name]; ok {
+		return value
+	}
+	value := zt.createZ3Variable(expr.Name, expr.Type())
+	zt.vars[expr.Name] = value
+	return value
 }
 
 // VisitIntConstant транслирует целочисленную константу в Z3
 func (zt *Z3Translator) VisitIntConstant(expr *symbolic.IntConstant) interface{} {
-	// TODO: Реализовать
-	// Создать Z3 константу с помощью zt.ctx.FromBigInt или аналогичного метода
-
-	panic("не реализовано")
+	return zt.ctx.FromInt(expr.Value, zt.ctx.IntSort()).(z3.Int)
 }
 
 // VisitBoolConstant транслирует булеву константу в Z3
 func (zt *Z3Translator) VisitBoolConstant(expr *symbolic.BoolConstant) interface{} {
-	// TODO: Реализовать
-	// Использовать zt.ctx.FromBool для создания Z3 булевой константы
-
-	panic("не реализовано")
+	return zt.ctx.FromBool(expr.Value)
 }
 
 // VisitBinaryOperation транслирует бинарную операцию в Z3
@@ -89,7 +85,67 @@ func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) int
 	// - Сравнения: left.Eq(right), left.LT(right), left.LE(right), etc.
 	// - Приводите типы: left.(z3.Int), right.(z3.Int) для int операций
 
-	panic("не реализовано")
+	left := expr.Left.Accept(zt)
+	right := expr.Right.Accept(zt)
+
+	switch expr.Left.Type() {
+	case symbolic.BoolType:
+		leftBool, err := zt.castToZ3BoolType(left)
+		if err != nil {
+			panic(fmt.Errorf("Error in binary operation: left operand: %w", err))
+		}
+		rightBool, err := zt.castToZ3BoolType(right)
+		if err != nil {
+			panic(fmt.Errorf("Error in binary operation: right operand: %w", err))
+		}
+		switch expr.Operator {
+		case symbolic.EQ:
+			return leftBool.Eq(rightBool)
+		case symbolic.NE:
+			return leftBool.NE(rightBool)
+		default:
+			panic(fmt.Errorf("Operation '%s' not supported for bool expressions", expr.Operator))
+		}
+
+	case symbolic.IntType:
+		leftInt, err := zt.castToZ3IntType(left)
+		if err != nil {
+			panic(fmt.Errorf("Error in binary operation: left operand: %w", err))
+		}
+		rightInt, err := zt.castToZ3IntType(right)
+		if err != nil {
+			panic(fmt.Errorf("Error in binary operation: right operand: %w", err))
+		}
+
+		switch expr.Operator {
+		case symbolic.ADD:
+			return leftInt.Add(rightInt)
+		case symbolic.SUB:
+			return leftInt.Sub(rightInt)
+		case symbolic.MUL:
+			return leftInt.Mul(rightInt)
+		case symbolic.DIV:
+			return leftInt.Div(rightInt)
+		case symbolic.MOD:
+			return leftInt.Mod(rightInt)
+		case symbolic.EQ:
+			return leftInt.Eq(rightInt)
+		case symbolic.NE:
+			return leftInt.NE(rightInt)
+		case symbolic.LT:
+			return leftInt.LT(rightInt)
+		case symbolic.LE:
+			return leftInt.LE(rightInt)
+		case symbolic.GT:
+			return leftInt.GT(rightInt)
+		case symbolic.GE:
+			return leftInt.GE(rightInt)
+		default:
+			panic(fmt.Errorf("Operation '%s' not supported for int expressions", expr.Operator))
+		}
+	default:
+		panic("не реализовано")
+	}
 }
 
 // VisitLogicalOperation транслирует логическую операцию в Z3
@@ -104,21 +160,67 @@ func (zt *Z3Translator) VisitLogicalOperation(expr *symbolic.LogicalOperation) i
 	// - NOT: operand.Not() (для единственного операнда)
 	// - IMPLIES: antecedent.Implies(consequent)
 
-	panic("не реализовано")
+	boolOperands := make([]z3.Bool, len(expr.Operands))
+	for i, operand := range expr.Operands {
+		vBool, err := zt.castToZ3BoolType(operand.Accept(zt))
+		if err != nil {
+			panic(fmt.Errorf("Error in logic operation: operand is not bool: %w", err))
+		}
+		boolOperands[i] = vBool
+	}
+
+	switch expr.Operator {
+	case symbolic.AND:
+		return boolOperands[0].And(boolOperands[1:]...)
+	case symbolic.OR:
+		return boolOperands[0].Or(boolOperands[1:]...)
+	case symbolic.NOT:
+		return boolOperands[0].Not()
+	case symbolic.IMPLIES:
+		return boolOperands[0].Implies(boolOperands[1])
+	default:
+		panic(fmt.Errorf("Logic operation '%s' not supported", expr.Operator))
+	}
 }
 
 // Вспомогательные методы
 
 // createZ3Variable создаёт Z3 переменную соответствующего типа
 func (zt *Z3Translator) createZ3Variable(name string, exprType symbolic.ExpressionType) z3.Value {
-	// TODO: Реализовать (вспомогательный метод)
-	// Создать Z3 переменную на основе типа
-	panic("не реализовано")
+	switch exprType {
+	case symbolic.IntType:
+		return zt.ctx.IntConst(name)
+	case symbolic.BoolType:
+		return zt.ctx.BoolConst(name)
+	default:
+		return nil
+	}
 }
 
 // castToZ3Type приводит значение к нужному Z3 типу
 func (zt *Z3Translator) castToZ3Type(value interface{}, targetType symbolic.ExpressionType) (z3.Value, error) {
-	// TODO: Реализовать (вспомогательный метод)
-	// Безопасно привести interface{} к конкретному Z3 типу
-	panic("не реализовано")
+	switch targetType {
+	case symbolic.IntType:
+		return zt.castToZ3IntType(value)
+	case symbolic.BoolType:
+		return zt.castToZ3BoolType(value)
+	default:
+		return nil, fmt.Errorf("Error: unsupported symbolic type: %s", targetType)
+	}
+}
+
+func (zt *Z3Translator) castToZ3IntType(value interface{}) (z3.Int, error) {
+	z3Value, ok := value.(z3.Int)
+	if !ok {
+		return z3Value, fmt.Errorf("Error: expected z3.Int, got %T", value)
+	}
+	return z3Value, nil
+}
+
+func (zt *Z3Translator) castToZ3BoolType(value interface{}) (z3.Bool, error) {
+	z3Value, ok := value.(z3.Bool)
+	if !ok {
+		return z3Value, fmt.Errorf("Error: expected z3.Bool, got %T", value)
+	}
+	return z3Value, nil
 }

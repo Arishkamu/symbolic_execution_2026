@@ -2,7 +2,11 @@
 package ssa
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
 	"go/token"
+	"go/types"
 
 	"golang.org/x/tools/go/ssa"
 )
@@ -36,5 +40,36 @@ func (b *Builder) ParseAndBuildSSA(source string, funcName string) (*ssa.Functio
 	// - Используйте ssautil.CreateProgram для создания SSA
 	// - Найдите функцию в SSA программе
 
-	panic("не реализовано")
+	file, err := parser.ParseFile(b.fset, "source.go", source, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("Error in parsing: %w", err)
+	}
+
+	info := &types.Info{
+		Types:        make(map[ast.Expr]types.TypeAndValue),
+		Instances:    make(map[*ast.Ident]types.Instance),
+		Defs:         make(map[*ast.Ident]types.Object),
+		Uses:         make(map[*ast.Ident]types.Object),
+		Implicits:    make(map[ast.Node]types.Object),
+		Selections:   make(map[*ast.SelectorExpr]*types.Selection),
+		Scopes:       make(map[ast.Node]*types.Scope),
+		FileVersions: make(map[*ast.File]string),
+	}
+
+	cnf := types.Config{}
+	pkg, err := cnf.Check(file.Name.Name, b.fset, []*ast.File{file}, info)
+	if err != nil {
+		return nil, fmt.Errorf("Error type-checking package: %w", err)
+	}
+
+	prog := ssa.NewProgram(b.fset, ssa.SanityCheckFunctions)
+	ssaPkg := prog.CreatePackage(pkg, []*ast.File{file}, info, true)
+	prog.Build()
+
+	function := ssaPkg.Func(funcName)
+	if function == nil {
+		return nil, fmt.Errorf("Error function '%s'not found", funcName)
+	}
+
+	return function, nil
 }
