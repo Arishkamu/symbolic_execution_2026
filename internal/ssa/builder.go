@@ -21,6 +21,13 @@ type SsaSource struct {
 	fn  *ssa.Function
 }
 
+func (s *SsaSource) Pkg() *ssa.Package {
+   return s.pkg
+}
+func (s *SsaSource) Fn() *ssa.Function {
+   return s.fn
+}
+
 // NewBuilder создаёт новый экземпляр Builder
 func NewBuilder() *Builder {
 	return &Builder{

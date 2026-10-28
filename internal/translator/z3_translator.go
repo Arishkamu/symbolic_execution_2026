@@ -148,6 +148,39 @@ func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) int
 	}
 }
 
+// VisitUnaryOperation implements [symbolic.Visitor].
+func (zt *Z3Translator) VisitUnaryOperation(expr *symbolic.UnaryOperation) interface{} {
+	operand := expr.Operand.Accept(zt)
+
+	switch expr.Operand.Type() {
+	case symbolic.BoolType:
+		operandBool, err := zt.castToZ3BoolType(operand)
+		if err != nil {
+			panic(fmt.Errorf("Error in unary operation: operand: %w", err))
+		}
+		switch expr.Operator {
+		case symbolic.UN_NOT:
+			return operandBool.Not()
+		default:
+			panic(fmt.Errorf("Operation '%s' not supported for bool expressions", expr.Operator))
+		}
+
+	case symbolic.IntType:
+		operandInt, err := zt.castToZ3IntType(operand)
+		if err != nil {
+			panic(fmt.Errorf("Error in unary operation: operand: %w", err))
+		}
+		switch expr.Operator {
+		case symbolic.UN_NEG:
+			return operandInt.Neg()
+		default:
+			panic(fmt.Errorf("Operation '%s' not supported for int expressions", expr.Operator))
+		}
+	default:
+		panic("не реализовано")
+	}
+}
+
 // VisitLogicalOperation транслирует логическую операцию в Z3
 func (zt *Z3Translator) VisitLogicalOperation(expr *symbolic.LogicalOperation) interface{} {
 	// TODO: Реализовать

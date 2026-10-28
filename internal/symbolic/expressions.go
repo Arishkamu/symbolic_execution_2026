@@ -139,6 +139,40 @@ func (bo *BinaryOperation) Accept(visitor Visitor) interface{} {
 	return visitor.VisitBinaryOperation(bo)
 }
 
+
+// UnaryOperation представляет унарную операцию
+type UnaryOperation struct {
+	Operand  SymbolicExpression
+	Operator UnaryOperator
+}
+
+// NewUnaryOperation создаёт новую унарную операцию
+func NewUnaryOperation(operand SymbolicExpression, op UnaryOperator) *UnaryOperation {
+	return &UnaryOperation{Operand: operand, Operator: op}
+}
+
+// Type возвращает тип унарной операции
+func (uo *UnaryOperation) Type() ExpressionType {
+	return uo.Operand.Type()
+}
+
+// String возвращает строковое представление унарной операции
+func (uo *UnaryOperation) String() string {
+	return fmt.Sprintf("%s(%s)", uo.Operator, uo.Operand)
+}
+
+// Accept реализует Visitor pattern
+func (uo *UnaryOperation) Accept(visitor Visitor) interface{} {
+	return visitor.VisitUnaryOperation(uo)
+}
+
+
+// Accept реализует Visitor pattern
+func (lo *LogicalOperation) Accept(visitor Visitor) interface{} {
+	return visitor.VisitLogicalOperation(lo)
+}
+
+
 // LogicalOperation представляет логическую операцию
 type LogicalOperation struct {
 	Operands []SymbolicExpression
@@ -230,6 +264,26 @@ func (op BinaryOperator) String() string {
 		return ">"
 	case GE:
 		return ">="
+	default:
+		return "unknown"
+	}
+}
+
+// Операторы для унарных выражений
+type UnaryOperator int
+
+const (
+	UN_NEG UnaryOperator = iota
+	UN_NOT
+)
+
+// String возвращает строковое представление унарного оператора
+func (op UnaryOperator) String() string {
+	switch op {
+	case UN_NEG:
+		return "-"
+	case UN_NOT:
+		return "!"
 	default:
 		return "unknown"
 	}
