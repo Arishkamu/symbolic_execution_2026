@@ -214,11 +214,6 @@ func (lo *LogicalOperation) String() string {
 	}
 }
 
-// Accept реализует Visitor pattern
-func (lo *LogicalOperation) Accept(visitor Visitor) interface{} {
-	return visitor.VisitLogicalOperation(lo)
-}
-
 // Операторы для бинарных выражений
 type BinaryOperator int
 

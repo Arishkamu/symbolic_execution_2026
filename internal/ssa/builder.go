@@ -17,15 +17,8 @@ type Builder struct {
 }
 
 type SsaSource struct {
-	pkg *ssa.Package
-	fn  *ssa.Function
-}
-
-func (s *SsaSource) Pkg() *ssa.Package {
-   return s.pkg
-}
-func (s *SsaSource) Fn() *ssa.Function {
-   return s.fn
+	Pkg *ssa.Package
+	Fn  *ssa.Function
 }
 
 // NewBuilder создаёт новый экземпляр Builder
@@ -56,7 +49,7 @@ func (b *Builder) ParseAndBuildSSA(source string, funcName string) (*ssa.Functio
 	if err != nil {
 		return nil, err
 	}
-	return ssaSource.fn, nil
+	return ssaSource.Fn, nil
 }
 
 func (b *Builder) ParseAndBuildSSAPkg(source string, funcName string) (*SsaSource, error) {
@@ -92,8 +85,8 @@ func (b *Builder) ParseAndBuildSSAPkg(source string, funcName string) (*SsaSourc
 		return nil, fmt.Errorf("Error function '%s'not found", funcName)
 	}
 	ssaSource := &SsaSource{
-		pkg: ssaPkg,
-		fn:  function,
+		Pkg: ssaPkg,
+		Fn:  function,
 	}
 
 	return ssaSource, nil

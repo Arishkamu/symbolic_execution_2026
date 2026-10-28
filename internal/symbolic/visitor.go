@@ -47,6 +47,15 @@ func (sp *StringPrinter) VisitBinaryOperation(expr *BinaryOperation) interface{}
 	return nil
 }
 
+// VisitUnaryOperation implements [Visitor].
+func (sp *StringPrinter) VisitUnaryOperation(expr *UnaryOperation) interface{} {
+	sp.result.WriteString(expr.Operator.String())
+	sp.result.WriteString("(")
+	expr.Operand.Accept(sp)
+	sp.result.WriteString(")")
+	return nil
+}
+
 func (sp *StringPrinter) VisitLogicalOperation(expr *LogicalOperation) interface{} {
 	switch expr.Operator {
 	case NOT:
