@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"go/constant"
 	"go/token"
+	"go/types"
 	"symbolic-execution-course/internal/memory"
 	"symbolic-execution-course/internal/symbolic"
 
+	"github.com/ebukreev/go-z3/z3"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -14,7 +16,12 @@ type Interpreter struct {
 	CallStack     []CallStackFrame
 	Analyser      *Analyser
 	PathCondition symbolic.SymbolicExpression
+	PathFormula   z3.Bool
 	Heap          memory.Memory
+
+	LoopUnroll *StepTracker
+	JumpDepth  *StepTracker
+	Status     InterpreterStatus
 }
 
 type CallStackFrame struct {
@@ -26,12 +33,30 @@ type CallStackFrame struct {
 	InstructionIndex int
 }
 
+type InterpreterStatus int
+
+const (
+	Running InterpreterStatus = iota
+	Returned
+	Terminated
+	Panic
+)
+
 // Interpreter utils
 func (interpreter *Interpreter) curFrame() *CallStackFrame {
 	if len(interpreter.CallStack) == 0 {
 		panic("Call stack is empty. No current frame available.")
 	}
 	return &interpreter.CallStack[len(interpreter.CallStack)-1]
+}
+
+func (interpreter *Interpreter) curInstruction() ssa.Instruction {
+	curFrame := interpreter.curFrame()
+	return curFrame.Block.Instrs[curFrame.InstructionIndex]
+}
+
+func (interpreter *Interpreter) incrInstructionIndex() {
+	interpreter.curFrame().InstructionIndex++
 }
 
 func (interpreter *Interpreter) clone() Interpreter {
@@ -49,16 +74,19 @@ func (interpreter *Interpreter) moveBlock(newBlock *ssa.BasicBlock) {
 }
 
 func (interpreter *Interpreter) feasible(cond symbolic.SymbolicExpression) bool {
-	if interpreter.PathCondition == nil {
-		interpreter.PathCondition = cond
-	} else {
-		interpreter.PathCondition = symbolic.NewLogicalOperation(
-			[]symbolic.SymbolicExpression{interpreter.PathCondition, cond},
-			symbolic.AND,
-		)
+	if c, ok := cond.(*symbolic.BoolConstant); ok {
+		return c.Value
 	}
-
-	panic("unimplemented")
+	interpreter.PathCondition = symbolic.NewLogicalOperation(
+		[]symbolic.SymbolicExpression{interpreter.PathCondition, cond},
+		symbolic.AND,
+	)
+	value, err := interpreter.Analyser.Z3Translator.TranslateExpression(cond)
+	if err != nil {
+		panic(fmt.Sprintf("analysis: translate path: %v", err))
+	}
+	interpreter.PathFormula = interpreter.PathFormula.And(value.(z3.Bool))
+	return interpreter.Analyser.solverCheck(interpreter.PathFormula)
 }
 
 // interpretDynamically block
@@ -86,6 +114,7 @@ func (interpreter *Interpreter) interpretUnOp(instruction *ssa.UnOp) []Interpret
 	result := interpreter.resolveExpression(instruction)
 	interpreter.curFrame().LocalMemory[instruction.Name()] = result
 
+	interpreter.incrInstructionIndex()
 	return []Interpreter{*interpreter}
 }
 
@@ -93,12 +122,13 @@ func (interpreter *Interpreter) interpretBinOp(instruction *ssa.BinOp) []Interpr
 	result := interpreter.resolveExpression(instruction)
 	interpreter.curFrame().LocalMemory[instruction.Name()] = result
 
+	interpreter.incrInstructionIndex()
 	return []Interpreter{*interpreter}
 }
 
 func (interpreter *Interpreter) interpretIf(instruction *ssa.If) []Interpreter {
 	condition := interpreter.resolveExpression(instruction.Cond)
-	notCondition := symbolic.NewUnaryOperation(condition, symbolic.UN_NOT)
+	notCondition := symbolic.UnNot(condition)
 
 	var succsessors []Interpreter
 	for i, cond := range []symbolic.SymbolicExpression{condition, notCondition} {
@@ -124,6 +154,7 @@ func (interpreter *Interpreter) interpretReturn(instruction *ssa.Return) []Inter
 	}
 
 	curFrame.Block = nil
+	interpreter.Status = Returned
 	return []Interpreter{*interpreter}
 }
 
@@ -141,8 +172,8 @@ func (interpreter *Interpreter) resolveExpression(value ssa.Value) symbolic.Symb
 		return interpreter.resolveUnOp(v)
 	case *ssa.BinOp:
 		return interpreter.resolveBinOp(v)
-	case *ssa.Parameter:
-		return interpreter.resolveParameter(v)
+	// case *ssa.Parameter:
+	// 	return interpreter.resolveParameter(v)
 	case *ssa.Phi:
 		panic("resolveExpression: Phi not implemented yet")
 		// return interpreter.resolvePhi(v)
@@ -176,8 +207,10 @@ func (interpreter *Interpreter) resolveUnOp(v *ssa.UnOp) symbolic.SymbolicExpres
 	switch v.Op {
 	case token.SUB:
 		return symbolic.NewUnaryOperation(value, symbolic.UN_NEG)
+	case token.XOR:
+		return symbolic.UnXor(value)
 	case token.NOT:
-		return symbolic.NewUnaryOperation(value, symbolic.UN_NOT)
+		return symbolic.UnNot(value)
 	default:
 		panic(fmt.Errorf("unknown or not implemented type for unop %s", v.Op))
 	}
@@ -218,6 +251,50 @@ func (interpreter *Interpreter) resolveBinOp(v *ssa.BinOp) symbolic.SymbolicExpr
 	}
 }
 
-func (interpreter *Interpreter) resolveParameter(v *ssa.Parameter) symbolic.SymbolicExpression {
-	panic("Ssa.Parameter resolution not implemented yet. I want to see when it happends.")
+// func (interpreter *Interpreter) resolveParameter(v *ssa.Parameter) symbolic.SymbolicExpression {
+// 	panic("Ssa.Parameter resolution not implemented yet. I want to see when it happends.")
+// }
+
+func convertType(t types.Type) symbolic.ExpressionType {
+	if t == nil {
+		panic("cannot convert expression type")
+	}
+	if t, ok := t.Underlying().(*types.Basic); ok {
+		switch {
+		case t.Kind() == types.Bool || t.Kind() == types.UntypedBool:
+			return symbolic.BoolType
+		case t.Kind() == types.Int || t.Kind() == types.UntypedInt:
+			return symbolic.IntType
+		}
+	}
+	panic(fmt.Errorf("unsupported basic type: %s", t.String()))
+}
+
+func (interpreter *Interpreter) String() string {
+	result := fmt.Sprintf("Interpreter:\n")
+	result += fmt.Sprintf("PathCondition: %s\n", interpreter.PathCondition.String())
+	result += fmt.Sprintf("Status: %d\n", interpreter.Status)
+
+	curFrame := interpreter.curFrame()
+	if len(interpreter.CallStack) > 0 {
+		result += fmt.Sprintf("Current Frame:\n")
+		result += fmt.Sprintf("Function: %s\n", curFrame.Function.Name())
+
+		if len(curFrame.LocalMemory) > 0 {
+			result += fmt.Sprintf("LocalMemory:\n")
+			for k, v := range curFrame.LocalMemory {
+				result += fmt.Sprintf("%s: %s\n", k, v.String())
+			}
+		}
+
+		if curFrame.ReturnValue != nil {
+			result += fmt.Sprintf("ReturnValue: %s\n", curFrame.ReturnValue.String())
+		}
+	}
+
+	if interpreter.curFrame().Block != nil {
+		result += fmt.Sprintf("CurrentBlock: %s\n", interpreter.curFrame().Block.String())
+	}
+	result += fmt.Sprintf("InstrIndex: %d\n", curFrame.InstructionIndex)
+	return result
 }

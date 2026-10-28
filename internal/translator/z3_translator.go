@@ -153,18 +153,6 @@ func (zt *Z3Translator) VisitUnaryOperation(expr *symbolic.UnaryOperation) inter
 	operand := expr.Operand.Accept(zt)
 
 	switch expr.Operand.Type() {
-	case symbolic.BoolType:
-		operandBool, err := zt.castToZ3BoolType(operand)
-		if err != nil {
-			panic(fmt.Errorf("Error in unary operation: operand: %w", err))
-		}
-		switch expr.Operator {
-		case symbolic.UN_NOT:
-			return operandBool.Not()
-		default:
-			panic(fmt.Errorf("Operation '%s' not supported for bool expressions", expr.Operator))
-		}
-
 	case symbolic.IntType:
 		operandInt, err := zt.castToZ3IntType(operand)
 		if err != nil {
