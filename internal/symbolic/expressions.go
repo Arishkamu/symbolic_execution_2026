@@ -185,7 +185,7 @@ func NewLogicalOperation(operands []SymbolicExpression, op LogicalOperator) *Log
 	if (op == AND || op == OR) && n < 2 {
 		panic(fmt.Sprintf("Unexpected number of argument for %s. Expected at least 2, got %d", op, n))
 	}
-	if (op == NOT && n != 1) || (op == IMPLIES && op != 2) {
+	if (op == NOT && n != 1) || (op == IMPLIES && n != 2) {
 		panic(fmt.Sprintf("Unexpected number of argument for %s, got %d", op, n))
 	}
 	return &LogicalOperation{Operands: operands, Operator: op}
