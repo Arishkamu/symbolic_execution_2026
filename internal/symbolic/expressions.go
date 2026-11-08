@@ -113,7 +113,7 @@ func NewBinaryOperation(left, right SymbolicExpression, op BinaryOperator) *Bina
 	if left.Type() != right.Type() {
 		panic(fmt.Sprintf("Unexpected expression. Expect equal types for left and right, got left.Type=%s right.Type=%s", left.Type(), right.Type()))
 	}
-	if (op == EQ || op == NE) && left.Type() != IntType {
+	if !(op == EQ || op == NE) && left.Type() != IntType {
 		panic(fmt.Sprintf("Unexpected expression. Operation '%s' defined only for IntType but operands have=%s", op, left.Type()))
 	}
 	return &BinaryOperation{Left: left, Right: right, Operator: op}
