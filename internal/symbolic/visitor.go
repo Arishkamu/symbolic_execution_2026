@@ -20,6 +20,13 @@ type StringPrinter struct {
 	result strings.Builder
 }
 
+func (sp *StringPrinter) GetString() string {
+	return sp.result.String()
+}
+func NewStringPrinter() *StringPrinter {
+	return &StringPrinter{result: strings.Builder{}}
+}
+
 func (sp *StringPrinter) VisitVariable(expr *SymbolicVariable) interface{} {
 	sp.result.WriteString(expr.String())
 	return nil
