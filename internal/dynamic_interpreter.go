@@ -128,7 +128,9 @@ func (interpreter *Interpreter) interpretBinOp(instruction *ssa.BinOp) []Interpr
 
 func (interpreter *Interpreter) interpretIf(instruction *ssa.If) []Interpreter {
 	condition := interpreter.resolveExpression(instruction.Cond)
-	notCondition := symbolic.UnNot(condition)
+	notCondSymbolic := symbolic.NewUnaryOperation(condition, symbolic.UN_NOT)
+	notCondition := symbolic.SimplifyExpression(notCondSymbolic)
+	fmt.Printf("EXPR: %s", notCondition)
 
 	var succsessors []Interpreter
 	for i, cond := range []symbolic.SymbolicExpression{condition, notCondition} {
@@ -164,14 +166,15 @@ func (interpreter *Interpreter) interpretPhi(instruction *ssa.Phi) []Interpreter
 
 // Resolve expressions block
 func (interpreter *Interpreter) resolveExpression(value ssa.Value) symbolic.SymbolicExpression {
+	var returnValue symbolic.SymbolicExpression
 
 	switch v := value.(type) {
 	case *ssa.Const:
-		return interpreter.resolveConst(v)
+		returnValue = interpreter.resolveConst(v)
 	case *ssa.UnOp:
-		return interpreter.resolveUnOp(v)
+		returnValue = interpreter.resolveUnOp(v)
 	case *ssa.BinOp:
-		return interpreter.resolveBinOp(v)
+		returnValue = interpreter.resolveBinOp(v)
 	// case *ssa.Parameter:
 	// 	return interpreter.resolveParameter(v)
 	case *ssa.Phi:
@@ -179,10 +182,12 @@ func (interpreter *Interpreter) resolveExpression(value ssa.Value) symbolic.Symb
 		// return interpreter.resolvePhi(v)
 	default:
 		if expr, ok := interpreter.curFrame().LocalMemory[value.Name()]; ok {
-			return expr
+			returnValue = expr
+		} else {
+			panic(fmt.Sprintf("unresolved value: %s, with type: %T", value.Name(), value))
 		}
-		panic(fmt.Sprintf("unresolved value: %s, with type: %T", value.Name(), value))
 	}
+	return symbolic.SimplifyExpression(returnValue)
 }
 
 func (interpreter *Interpreter) resolveConst(v *ssa.Const) symbolic.SymbolicExpression {
@@ -208,9 +213,9 @@ func (interpreter *Interpreter) resolveUnOp(v *ssa.UnOp) symbolic.SymbolicExpres
 	case token.SUB:
 		return symbolic.NewUnaryOperation(value, symbolic.UN_NEG)
 	case token.XOR:
-		return symbolic.UnXor(value)
+		return symbolic.NewUnaryOperation(value, symbolic.UN_XOR)
 	case token.NOT:
-		return symbolic.UnNot(value)
+		return symbolic.NewUnaryOperation(value, symbolic.UN_NOT)
 	default:
 		panic(fmt.Errorf("unknown or not implemented type for unop %s", v.Op))
 	}

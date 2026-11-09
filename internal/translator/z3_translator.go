@@ -140,6 +140,22 @@ func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) int
 			return leftInt.GT(rightInt)
 		case symbolic.GE:
 			return leftInt.GE(rightInt)
+		}
+
+		leftBV := zt.castZ3IntToBV(leftInt)
+		rightBV := zt.castZ3IntToBV(rightInt)
+		switch expr.Operator {
+		case symbolic.BIT_AND:
+			return leftBV.And(rightBV)
+		case symbolic.BIT_OR:
+			return leftBV.Or(rightBV)
+		case symbolic.BIT_XOR:
+			return leftBV.Xor(rightBV)
+		case symbolic.LSH:
+			return leftBV.Lsh(rightBV)
+		case symbolic.RSH:
+			return leftBV.SRsh(rightBV)
+		
 		default:
 			panic(fmt.Errorf("Operation '%s' not supported for int expressions", expr.Operator))
 		}
@@ -162,10 +178,10 @@ func (zt *Z3Translator) VisitUnaryOperation(expr *symbolic.UnaryOperation) inter
 		case symbolic.UN_NEG:
 			return operandInt.Neg()
 		default:
-			panic(fmt.Errorf("Operation '%s' not supported for int expressions", expr.Operator))
+			panic(fmt.Errorf("Operation '%s' not supported. Expect it to be simplified", expr.Operator))
 		}
 	default:
-		panic("не реализовано")
+		panic(fmt.Errorf("не реализовано: %s", expr.Operator))
 	}
 }
 
@@ -244,4 +260,8 @@ func (zt *Z3Translator) castToZ3BoolType(value interface{}) (z3.Bool, error) {
 		return z3Value, fmt.Errorf("Error: expected z3.Bool, got %T", value)
 	}
 	return z3Value, nil
+}
+
+func (zt *Z3Translator) castZ3IntToBV(valInt z3.Int) z3.BV {
+	return valInt.ToBV(64)
 }

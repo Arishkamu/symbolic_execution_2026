@@ -167,12 +167,6 @@ func (uo *UnaryOperation) Accept(visitor Visitor) interface{} {
 }
 
 
-// Accept реализует Visitor pattern
-func (lo *LogicalOperation) Accept(visitor Visitor) interface{} {
-	return visitor.VisitLogicalOperation(lo)
-}
-
-
 // LogicalOperation представляет логическую операцию
 type LogicalOperation struct {
 	Operands []SymbolicExpression
@@ -214,25 +208,10 @@ func (lo *LogicalOperation) String() string {
 	}
 }
 
-func UnNot(expr SymbolicExpression) SymbolicExpression {
-	switch e := expr.(type) {
-	case *BoolConstant:
-		return NewBoolConstant(!e.Value)
-	case *LogicalOperation:
-		if e.Operator == NOT {
-			return e.Operands[0]
-		}
-	}
-	return NewLogicalOperation([]SymbolicExpression{expr}, NOT)
+func (lo *LogicalOperation) Accept(visitor Visitor) interface{} {
+	return visitor.VisitLogicalOperation(lo)
 }
 
-func UnXor(expr SymbolicExpression) SymbolicExpression {
-	switch expr.Type() {
-	case IntType:
-		return NewBinaryOperation((NewUnaryOperation(expr, UN_NEG)), NewIntConstant(-1), SUB)
-	}
-	return NewLogicalOperation([]SymbolicExpression{expr}, NOT)
-}
 
 // Операторы для бинарных выражений
 type BinaryOperator int
@@ -252,6 +231,13 @@ const (
 	LE // меньше или равно
 	GT // больше
 	GE // больше или равно
+
+	BIT_AND // побитовое И
+	BIT_OR  // побитовое ИЛИ
+	BIT_XOR // побитовое исключающее ИЛИ
+
+	LSH // побитовый сдвиг влево
+	RSH // побитовый сдвиг вправо
 )
 
 // String возвращает строковое представление оператора
@@ -279,6 +265,16 @@ func (op BinaryOperator) String() string {
 		return ">"
 	case GE:
 		return ">="
+	case BIT_AND:
+		return "&"
+	case BIT_OR:
+		return "|"
+	case BIT_XOR:
+		return "^"
+	case LSH:
+		return "<<"
+	case RSH:
+		return ">>"
 	default:
 		return "unknown"
 	}
@@ -289,6 +285,8 @@ type UnaryOperator int
 
 const (
 	UN_NEG UnaryOperator = iota
+	UN_XOR
+	UN_NOT
 )
 
 // String возвращает строковое представление унарного оператора
@@ -296,6 +294,10 @@ func (op UnaryOperator) String() string {
 	switch op {
 	case UN_NEG:
 		return "-"
+	case UN_XOR:
+		return "^"
+	case UN_NOT:
+		return "!"
 	default:
 		return "unknown"
 	}
