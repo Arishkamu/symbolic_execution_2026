@@ -7,6 +7,7 @@ import (
 	"go/types"
 	"symbolic-execution-course/internal/memory"
 	"symbolic-execution-course/internal/symbolic"
+	"symbolic-execution-course/internal/translator"
 
 	"github.com/ebukreev/go-z3/z3"
 	"golang.org/x/tools/go/ssa"
@@ -81,7 +82,7 @@ func (interpreter *Interpreter) feasible(cond symbolic.SymbolicExpression) bool 
 		[]symbolic.SymbolicExpression{interpreter.PathCondition, cond},
 		symbolic.AND,
 	)
-	value, err := interpreter.Analyser.Z3Translator.TranslateExpression(cond)
+	value, err := simplifyAndTranslateExpression(interpreter.Analyser.Z3Translator, cond)
 	if err != nil {
 		panic(fmt.Sprintf("analysis: translate path: %v", err))
 	}
@@ -128,9 +129,7 @@ func (interpreter *Interpreter) interpretBinOp(instruction *ssa.BinOp) []Interpr
 
 func (interpreter *Interpreter) interpretIf(instruction *ssa.If) []Interpreter {
 	condition := interpreter.resolveExpression(instruction.Cond)
-	notCondSymbolic := symbolic.NewUnaryOperation(condition, symbolic.UN_NOT)
-	notCondition := symbolic.SimplifyExpression(notCondSymbolic)
-	fmt.Printf("EXPR: %s", notCondition)
+	notCondition := symbolic.NewUnaryOperation(condition, symbolic.UN_NOT)
 
 	var succsessors []Interpreter
 	for i, cond := range []symbolic.SymbolicExpression{condition, notCondition} {
@@ -166,15 +165,13 @@ func (interpreter *Interpreter) interpretPhi(instruction *ssa.Phi) []Interpreter
 
 // Resolve expressions block
 func (interpreter *Interpreter) resolveExpression(value ssa.Value) symbolic.SymbolicExpression {
-	var returnValue symbolic.SymbolicExpression
-
 	switch v := value.(type) {
 	case *ssa.Const:
-		returnValue = interpreter.resolveConst(v)
+		return interpreter.resolveConst(v)
 	case *ssa.UnOp:
-		returnValue = interpreter.resolveUnOp(v)
+		return interpreter.resolveUnOp(v)
 	case *ssa.BinOp:
-		returnValue = interpreter.resolveBinOp(v)
+		return interpreter.resolveBinOp(v)
 	// case *ssa.Parameter:
 	// 	return interpreter.resolveParameter(v)
 	case *ssa.Phi:
@@ -182,12 +179,11 @@ func (interpreter *Interpreter) resolveExpression(value ssa.Value) symbolic.Symb
 		// return interpreter.resolvePhi(v)
 	default:
 		if expr, ok := interpreter.curFrame().LocalMemory[value.Name()]; ok {
-			returnValue = expr
+			return expr
 		} else {
 			panic(fmt.Sprintf("unresolved value: %s, with type: %T", value.Name(), value))
 		}
 	}
-	return symbolic.SimplifyExpression(returnValue)
 }
 
 func (interpreter *Interpreter) resolveConst(v *ssa.Const) symbolic.SymbolicExpression {
@@ -302,4 +298,9 @@ func (interpreter *Interpreter) String() string {
 	}
 	result += fmt.Sprintf("InstrIndex: %d\n", curFrame.InstructionIndex)
 	return result
+}
+
+func simplifyAndTranslateExpression(zt *translator.Z3Translator, expr symbolic.SymbolicExpression) (interface{}, error) {
+	simpifiedExpr := (&symbolic.Simplifier{}).Simplify(expr)
+	return zt.TranslateExpression(simpifiedExpr)
 }
