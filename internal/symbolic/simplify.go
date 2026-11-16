@@ -19,6 +19,9 @@ func (s *Simplifier) VisitVariable(expr *SymbolicVariable) interface{} {
 func (s *Simplifier) VisitIntConstant(expr *IntConstant) interface{} {
 	return expr
 }
+func (s *Simplifier) VisitFloatConstant(expr *FloatConstant) interface{} {
+	return expr
+}
 
 func (s *Simplifier) VisitBoolConstant(expr *BoolConstant) interface{} {
 	return expr

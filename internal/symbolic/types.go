@@ -6,6 +6,7 @@ type ExpressionType int
 
 const (
 	IntType ExpressionType = iota
+	Float64Type
 	BoolType
 	ArrayType
 	// Добавьте другие типы по необходимости
@@ -16,6 +17,8 @@ func (et ExpressionType) String() string {
 	switch et {
 	case IntType:
 		return "int"
+	case Float64Type:
+		return "float64"
 	case BoolType:
 		return "bool"
 	case ArrayType:

@@ -8,6 +8,7 @@ import (
 type Visitor interface {
 	VisitVariable(expr *SymbolicVariable) interface{}
 	VisitIntConstant(expr *IntConstant) interface{}
+	VisitFloatConstant(expr *FloatConstant) interface{}
 	VisitBoolConstant(expr *BoolConstant) interface{}
 	VisitBinaryOperation(expr *BinaryOperation) interface{}
 	VisitUnaryOperation(expr *UnaryOperation) interface{}
@@ -33,6 +34,11 @@ func (sp *StringPrinter) VisitVariable(expr *SymbolicVariable) interface{} {
 }
 
 func (sp *StringPrinter) VisitIntConstant(expr *IntConstant) interface{} {
+	sp.result.WriteString(expr.String())
+	return nil
+}
+
+func (sp *StringPrinter) VisitFloatConstant(expr *FloatConstant) interface{} {
 	sp.result.WriteString(expr.String())
 	return nil
 }

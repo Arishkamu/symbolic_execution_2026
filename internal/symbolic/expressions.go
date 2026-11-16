@@ -97,6 +97,31 @@ func (bc *BoolConstant) Accept(visitor Visitor) interface{} {
 	return visitor.VisitBoolConstant(bc)
 }
 
+// IntConstant представляет целочисленную константу
+type FloatConstant struct {
+	Value float64
+}
+
+// NewIntConstant создаёт новую целочисленную константу
+func NewFloatConstant(value float64) *FloatConstant {
+	return &FloatConstant{Value: value}
+}
+
+// Type возвращает тип константы
+func (fc *FloatConstant) Type() ExpressionType {
+	return Float64Type
+}
+
+// String возвращает строковое представление константы
+func (fc *FloatConstant) String() string {
+	return fmt.Sprintf("%d", fc.Value)
+}
+
+// Accept реализует Visitor pattern
+func (fc *FloatConstant) Accept(visitor Visitor) interface{} {
+	return visitor.VisitFloatConstant(fc)
+}
+
 // BinaryOperation представляет бинарную операцию
 type BinaryOperation struct {
 	Left     SymbolicExpression
@@ -113,8 +138,11 @@ func NewBinaryOperation(left, right SymbolicExpression, op BinaryOperator) *Bina
 	if left.Type() != right.Type() {
 		panic(fmt.Sprintf("Unexpected expression. Expect equal types for left and right, got left.Type=%s right.Type=%s", left.Type(), right.Type()))
 	}
-	if !(op == EQ || op == NE) && left.Type() != IntType {
-		panic(fmt.Sprintf("Unexpected expression. Operation '%s' defined only for IntType but operands have=%s", op, left.Type()))
+	if !(op == EQ || op == NE) && (left.Type() != IntType) && (left.Type() != Float64Type) {
+		panic(fmt.Sprintf("Unexpected expression. Operation '%s' defined only for NumTypes but operands have=%s", op, left.Type()))
+	}
+	if op == MOD && left.Type() == Float64Type {
+		panic(fmt.Sprintf("Unexpected expression. Operation '%s' not defined for FloatType but operands have=%s", op, left.Type()))
 	}
 	return &BinaryOperation{Left: left, Right: right, Operator: op}
 }
