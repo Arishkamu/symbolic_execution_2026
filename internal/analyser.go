@@ -116,7 +116,11 @@ func (analyser *Analyser) solverCheck(condition z3.Bool) bool {
 		panic(fmt.Sprintf("analysis: solver could not decide path: %v", err))
 	}
 	fmt.Printf("Condi: %v\n",condition)
-	fmt.Printf("Model: %v\n",analyser.Solver.Model())
+	if (sat) {
+		fmt.Printf("Model: %v\n",analyser.Solver.Model())
+	} else {
+		fmt.Printf("UnSat. Can't log model.\n")
+	}
 	return sat
 }
 	

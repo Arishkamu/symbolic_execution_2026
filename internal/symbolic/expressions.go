@@ -114,7 +114,7 @@ func (fc *FloatConstant) Type() ExpressionType {
 
 // String возвращает строковое представление константы
 func (fc *FloatConstant) String() string {
-	return fmt.Sprintf("%d", fc.Value)
+	return fmt.Sprintf("%v", fc.Value)
 }
 
 // Accept реализует Visitor pattern

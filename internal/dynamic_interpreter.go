@@ -63,7 +63,15 @@ func (interpreter *Interpreter) incrInstructionIndex() {
 func (interpreter *Interpreter) clone() Interpreter {
 	clone := *interpreter
 
-	clone.CallStack = append([]CallStackFrame(nil), interpreter.CallStack...)
+	clone.CallStack = make([]CallStackFrame, len(interpreter.CallStack))
+
+    for i, frame := range interpreter.CallStack {
+        clone.CallStack[i] = frame
+		frame.LocalMemory = make(map[string]symbolic.SymbolicExpression, len(interpreter.CallStack[i].LocalMemory))
+		for k, v := range interpreter.CallStack[i].LocalMemory {
+			frame.LocalMemory[k] = v
+		}
+	}
 	return clone
 }
 
@@ -143,7 +151,13 @@ func (interpreter *Interpreter) interpretIf(instruction *ssa.If) []Interpreter {
 }
 
 func (interpreter *Interpreter) interpretJump(instruction *ssa.Jump) []Interpreter {
-	panic("unimplemented")
+	if interpreter.JumpDepth.finished() {
+		panic("Max Jump Depth reached!")
+	}
+
+	interpreter.moveBlock(instruction.Block().Succs[0])
+	interpreter.JumpDepth.incr()
+	return []Interpreter{*interpreter}
 }
 
 func (interpreter *Interpreter) interpretReturn(instruction *ssa.Return) []Interpreter {
@@ -160,7 +174,27 @@ func (interpreter *Interpreter) interpretReturn(instruction *ssa.Return) []Inter
 }
 
 func (interpreter *Interpreter) interpretPhi(instruction *ssa.Phi) []Interpreter {
-	panic("unimplemented")
+	curFrame := interpreter.curFrame()
+    if curFrame.PreviousBlock == nil {
+        panic("Error. Cannot resolve Phi: previous block is nil")
+    }
+
+	var value ssa.Value
+    for i, pred := range instruction.Block().Preds {
+		if pred == curFrame.PreviousBlock && i < len(instruction.Edges) {
+			value = instruction.Edges[i]
+			break
+		}
+	}
+	if value == nil {
+		panic("Error. Cannot find corresponding value in Phi")
+	}
+	
+	result := interpreter.resolveExpression(value)
+	interpreter.curFrame().LocalMemory[instruction.Name()] = result
+
+	interpreter.incrInstructionIndex()
+	return []Interpreter{*interpreter}
 }
 
 // Resolve expressions block
@@ -174,8 +208,12 @@ func (interpreter *Interpreter) resolveExpression(value ssa.Value) symbolic.Symb
 		return interpreter.resolveBinOp(v)
 	// case *ssa.Parameter:
 	// 	return interpreter.resolveParameter(v)
-	case *ssa.Phi:
-		panic("resolveExpression: Phi not implemented yet")
+	// case *ssa.Phi:
+	// 	fmt.Printf("BLOCK: %s\n", 7)
+	// 	for _, instr := range interpreter.curFrame().Block.Instrs {
+	// 		fmt.Printf("    %T: %s\n", instr, instr)
+	// 	}
+	// 	panic("resolveExpression: Phi not implemented yet")
 		// return interpreter.resolvePhi(v)
 	default:
 		if expr, ok := interpreter.curFrame().LocalMemory[value.Name()]; ok {
@@ -197,6 +235,8 @@ func (interpreter *Interpreter) resolveConst(v *ssa.Const) symbolic.SymbolicExpr
 		return symbolic.NewBoolConstant(constant.BoolVal(constVal))
 	case constant.Int:
 		return symbolic.NewIntConstant(v.Int64())
+	case constant.Float:
+		return symbolic.NewFloatConstant(v.Float64())
 	default:
 		panic(fmt.Errorf("unknown type for const %s", v.String()))
 	}
@@ -245,6 +285,17 @@ func (interpreter *Interpreter) resolveBinOp(v *ssa.BinOp) symbolic.SymbolicExpr
 		return symbolic.NewBinaryOperation(left, right, symbolic.LE)
 	case token.GEQ:
 		return symbolic.NewBinaryOperation(left, right, symbolic.GE)
+	
+	case token.AND:
+		return symbolic.NewBinaryOperation(left, right, symbolic.BIT_AND)
+	case token.OR:
+		return symbolic.NewBinaryOperation(left, right, symbolic.BIT_OR)
+	case token.XOR:
+		return symbolic.NewBinaryOperation(left, right, symbolic.BIT_XOR)
+	case token.SHL:
+		return symbolic.NewBinaryOperation(left, right, symbolic.LSH)
+	case token.SHR:
+		return symbolic.NewBinaryOperation(left, right, symbolic.RSH)
 	default:
 		// Comparisons and logical operators need to map to the
 		// corresponding expression types in your symbolic system.
@@ -266,6 +317,8 @@ func convertType(t types.Type) symbolic.ExpressionType {
 			return symbolic.BoolType
 		case t.Kind() == types.Int || t.Kind() == types.UntypedInt:
 			return symbolic.IntType
+		case t.Kind() == types.Float64 || t.Kind() == types.UntypedFloat:
+			return symbolic.Float64Type
 		}
 	}
 	panic(fmt.Errorf("unsupported basic type: %s", t.String()))
