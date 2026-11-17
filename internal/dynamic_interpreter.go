@@ -20,9 +20,10 @@ type Interpreter struct {
 	PathFormula   z3.Bool
 	Heap          memory.Memory
 
-	LoopUnroll *StepTracker
-	JumpDepth  *StepTracker
-	Status     InterpreterStatus
+	BlockVisits map[*ssa.BasicBlock]int
+	LoopUnroll  *StepTracker
+	JumpDepth   *StepTracker
+	Status      InterpreterStatus
 }
 
 type CallStackFrame struct {
@@ -39,7 +40,7 @@ type InterpreterStatus int
 const (
 	Running InterpreterStatus = iota
 	Returned
-	Terminated
+	Dropped
 	Panic
 )
 
@@ -77,9 +78,16 @@ func (interpreter *Interpreter) clone() Interpreter {
 
 func (interpreter *Interpreter) moveBlock(newBlock *ssa.BasicBlock) {
 	curFrame := interpreter.curFrame()
+	interpreter.BlockVisits[curFrame.Block]++
 	curFrame.PreviousBlock = curFrame.Block
 	curFrame.Block = newBlock
 	curFrame.InstructionIndex = 0
+}
+
+func (interpreter *Interpreter) finishInterpreter(status InterpreterStatus) []Interpreter {
+	interpreter.curFrame().Block = nil
+	interpreter.Status = status
+	return []Interpreter{*interpreter}
 }
 
 func (interpreter *Interpreter) feasible(cond symbolic.SymbolicExpression) bool {
@@ -113,9 +121,15 @@ func (interpreter *Interpreter) interpretDynamically(element ssa.Instruction) []
 		return interpreter.interpretReturn(instr)
 	case *ssa.Phi:
 		return interpreter.interpretPhi(instr)
+	case *ssa.Panic:
+		return interpreter.interpretPanic(instr)
+	case *ssa.MakeInterface, *ssa.DebugRef:
+		// Ignore for now. We think that this is only part of panic
+		interpreter.incrInstructionIndex()
+		return []Interpreter{*interpreter}
 	default:
 		// Unsupported instructions must not silently succeed.
-		panic("interpretDynamically: unsupported instruction type")
+		panic(fmt.Sprintf("interpretDynamically: unsupported instruction type: %s", instr))
 	}
 }
 
@@ -143,6 +157,7 @@ func (interpreter *Interpreter) interpretIf(instruction *ssa.If) []Interpreter {
 	for i, cond := range []symbolic.SymbolicExpression{condition, notCondition} {
 		interpr := interpreter.clone()
 		if interpr.feasible(cond) {
+			// TODO maybe check if maxBrancesCount reached
 			interpr.moveBlock(instruction.Block().Succs[i])
 			succsessors = append(succsessors, interpr)
 		}
@@ -154,8 +169,14 @@ func (interpreter *Interpreter) interpretJump(instruction *ssa.Jump) []Interpret
 	if interpreter.JumpDepth.finished() {
 		panic("Max Jump Depth reached!")
 	}
+	nextBlock := instruction.Block().Succs[0]
+	// I probably can fix this if correctly clone (push and pop) interpreter and 
+	// count loops and make zero when exit
+	if (interpreter.BlockVisits[nextBlock] >= interpreter.LoopUnroll.MaxSteps) {
+		return interpreter.finishInterpreter(Dropped)
+	}
 
-	interpreter.moveBlock(instruction.Block().Succs[0])
+	interpreter.moveBlock(nextBlock)
 	interpreter.JumpDepth.incr()
 	return []Interpreter{*interpreter}
 }
@@ -168,9 +189,11 @@ func (interpreter *Interpreter) interpretReturn(instruction *ssa.Return) []Inter
 		curFrame.ReturnValue = result
 	}
 
-	curFrame.Block = nil
-	interpreter.Status = Returned
-	return []Interpreter{*interpreter}
+	return interpreter.finishInterpreter(Returned)
+}
+
+func (interpreter *Interpreter) interpretPanic(instruction *ssa.Panic) []Interpreter {
+	return interpreter.finishInterpreter(Panic)
 }
 
 func (interpreter *Interpreter) interpretPhi(instruction *ssa.Phi) []Interpreter {

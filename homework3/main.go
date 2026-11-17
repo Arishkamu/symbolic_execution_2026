@@ -224,22 +224,23 @@ funcNames := []string{
 "testUnary", 
 "testComparisons", 
 "testLogicalOps", 
-NO LOOPS YET: "testWhileLoop", 
-NO LOOPS YET: "testForLoop", 
-NO LOOPS YET: "testInfiniteLoopBreak", 
-NO LOOPS YET: "testLoopWithConcreteBoundAndSymbolicBranching", 
-NO LOOPS YET: "testLoopWithSymbolicBoundAndSymbolicBranching", 
+"testWhileLoop", 
+"testForLoop", 
+"testInfiniteLoopBreak", 
+"testLoopWithConcreteBoundAndSymbolicBranching", 
+AAAA "testLoopWithSymbolicBoundAndSymbolicBranching", 
 "testComplexConditions", 
 "testNestedIf", 
 "testBitwise", 
-NO LOOPS YET: "testCombined", 
+"testCombined", 
 "testEdgeCases", 
 "testMultipleReturns", 
 "testSimpleSum"
 }
 */
 
-	funcImplemented := []string{"test1", "test2", "testArithmetic", "testUnary", "testComparisons", "testLogicalOps", "testComplexConditions", "testNestedIf", "testBitwise", "testEdgeCases", "testMultipleReturns", "testSimpleSum"}
+	funcImplemented := []string{"testLoopWithSymbolicBoundAndSymbolicBranching", "testCombined", "testLoopWithConcreteBoundAndSymbolicBranching", "testInfiniteLoopBreak", "testForLoop", "testWhileLoop"}
+	// , "test1", "test2", "testArithmetic", "testUnary", "testComparisons", "testLogicalOps", "testComplexConditions", "testNestedIf", "testBitwise", "testEdgeCases", "testMultipleReturns", "testSimpleSum"}
 	for _, fn := range funcImplemented {
 		fmt.Printf("FUNCTION TESTED: %s\n", fn)
 		// result := 

@@ -69,6 +69,7 @@ func AnalyzeWithOptions(source, functionName string, options AnalyseOptions) []I
 			LocalMemory: make(map[string]symbolic.SymbolicExpression),
 		}},
 		Analyser:      analyser,
+		BlockVisits:   make(map[*ssa.BasicBlock]int),
 		LoopUnroll:    newStepTracker(options.MaxLoopUnroll),
 		JumpDepth:     newStepTracker(options.MaxJumpDepth),
 		PathCondition: symbolic.NewBoolConstant(true),
