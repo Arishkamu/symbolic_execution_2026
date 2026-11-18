@@ -21,9 +21,9 @@ type Interpreter struct {
 	Heap          memory.Memory
 
 	BlockVisits map[*ssa.BasicBlock]int
-	LoopUnroll  *StepTracker
-	JumpDepth   *StepTracker
-	Status      InterpreterStatus
+	LoopUnroll  StepTracker
+	JumpDepth   StepTracker
+	Status      InterpreterState
 }
 
 type CallStackFrame struct {
@@ -43,6 +43,26 @@ const (
 	Dropped
 	Panic
 )
+
+func (s InterpreterStatus) String() string {
+    switch s {
+    case Running:
+        return "Running"
+    case Returned:
+        return "Returned"
+    case Dropped:
+        return "Dropped"
+    case Panic:
+        return "Panic"
+    default:
+        return "Unknown"
+    }
+}
+
+type InterpreterState struct {
+    Status  InterpreterStatus
+    Message string
+}
 
 // Interpreter utils
 func (interpreter *Interpreter) curFrame() *CallStackFrame {
@@ -73,20 +93,27 @@ func (interpreter *Interpreter) clone() Interpreter {
 			frame.LocalMemory[k] = v
 		}
 	}
+
+	clone.BlockVisits = make(map[*ssa.BasicBlock]int, len(interpreter.BlockVisits))
+
+    for block, visits := range interpreter.BlockVisits {
+        clone.BlockVisits[block] = visits
+    }
 	return clone
 }
 
 func (interpreter *Interpreter) moveBlock(newBlock *ssa.BasicBlock) {
 	curFrame := interpreter.curFrame()
 	interpreter.BlockVisits[curFrame.Block]++
+	fmt.Printf("Interpreter: %p: curFrame.Block: %s = %s\n", interpreter, curFrame.Block, interpreter.BlockVisits[curFrame.Block])
 	curFrame.PreviousBlock = curFrame.Block
 	curFrame.Block = newBlock
 	curFrame.InstructionIndex = 0
 }
 
-func (interpreter *Interpreter) finishInterpreter(status InterpreterStatus) []Interpreter {
+func (interpreter *Interpreter) finishInterpreter(status InterpreterStatus, msg string) []Interpreter {
 	interpreter.curFrame().Block = nil
-	interpreter.Status = status
+	interpreter.Status = InterpreterState{status, msg}
 	return []Interpreter{*interpreter}
 }
 
@@ -123,7 +150,7 @@ func (interpreter *Interpreter) interpretDynamically(element ssa.Instruction) []
 		return interpreter.interpretPhi(instr)
 	case *ssa.Panic:
 		return interpreter.interpretPanic(instr)
-	case *ssa.MakeInterface, *ssa.DebugRef:
+	case *ssa.MakeInterface:
 		// Ignore for now. We think that this is only part of panic
 		interpreter.incrInstructionIndex()
 		return []Interpreter{*interpreter}
@@ -167,13 +194,13 @@ func (interpreter *Interpreter) interpretIf(instruction *ssa.If) []Interpreter {
 
 func (interpreter *Interpreter) interpretJump(instruction *ssa.Jump) []Interpreter {
 	if interpreter.JumpDepth.finished() {
-		panic("Max Jump Depth reached!")
+		return interpreter.finishInterpreter(Dropped, "JumpDepth maxStep reached.")
 	}
 	nextBlock := instruction.Block().Succs[0]
 	// I probably can fix this if correctly clone (push and pop) interpreter and 
 	// count loops and make zero when exit
 	if (interpreter.BlockVisits[nextBlock] >= interpreter.LoopUnroll.MaxSteps) {
-		return interpreter.finishInterpreter(Dropped)
+		return interpreter.finishInterpreter(Dropped, "LoopUnroll maxStep reached.")
 	}
 
 	interpreter.moveBlock(nextBlock)
@@ -189,11 +216,22 @@ func (interpreter *Interpreter) interpretReturn(instruction *ssa.Return) []Inter
 		curFrame.ReturnValue = result
 	}
 
-	return interpreter.finishInterpreter(Returned)
+	return interpreter.finishInterpreter(Returned, "")
 }
 
 func (interpreter *Interpreter) interpretPanic(instruction *ssa.Panic) []Interpreter {
-	return interpreter.finishInterpreter(Panic)
+	// some conversion of make interface to string. Crutch
+	panicMsg := instruction.X.String()
+	if constSsa, ok := instruction.X.(*ssa.MakeInterface).X.(*ssa.Const); ok {
+		constVal := constSsa.Value
+		switch constVal.Kind() {
+		case constant.String:
+			panicMsg = constant.StringVal(constVal)
+		default:
+			panicMsg = constVal.String()
+		}
+	}
+	return interpreter.finishInterpreter(Panic, panicMsg)
 }
 
 func (interpreter *Interpreter) interpretPhi(instruction *ssa.Phi) []Interpreter {
@@ -350,7 +388,7 @@ func convertType(t types.Type) symbolic.ExpressionType {
 func (interpreter *Interpreter) String() string {
 	result := fmt.Sprintf("Interpreter:\n")
 	result += fmt.Sprintf("PathCondition: %s\n", interpreter.PathCondition.String())
-	result += fmt.Sprintf("Status: %d\n", interpreter.Status)
+	result += fmt.Sprintf("Status: %s: %s\n", interpreter.Status.Status, interpreter.Status.Message)
 
 	curFrame := interpreter.curFrame()
 	if len(interpreter.CallStack) > 0 {

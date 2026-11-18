@@ -19,7 +19,7 @@ type Analyser struct {
 	PathSelector PathSelector
 	Results      []Interpreter
 	Z3Translator *translator.Z3Translator
-	Stepper    	 *StepTracker
+	Stepper    	 StepTracker
 	Solver       *z3.Solver
 }
 
@@ -74,7 +74,7 @@ func AnalyzeWithOptions(source, functionName string, options AnalyseOptions) []I
 		JumpDepth:     newStepTracker(options.MaxJumpDepth),
 		PathCondition: symbolic.NewBoolConstant(true),
 		PathFormula:   ctx.FromBool(true),
-		Status:        Running,
+		Status:        InterpreterState{Running, ssaSource.Fn.Name()},
 	}
 	
 	for _, param := range ssaSource.Fn.Params {
@@ -91,7 +91,7 @@ func (analyser *Analyser) run(initialState Interpreter) {
 		interpreter := heap.Pop(&analyser.StatesQueue).(*Item).value
 		analyser.Stepper.incr()
 		for _, newInterpreter := range interpreter.interpretDynamically(interpreter.curInstruction()) {
-			if newInterpreter.Status == Running {
+			if newInterpreter.Status.Status == Running {
 				analyser.push(newInterpreter)
 			} else {
 				analyser.Results = append(analyser.Results, newInterpreter)
@@ -116,12 +116,13 @@ func (analyser *Analyser) solverCheck(condition z3.Bool) bool {
 	if err != nil {
 		panic(fmt.Sprintf("analysis: solver could not decide path: %v", err))
 	}
-	fmt.Printf("Condi: %v\n",condition)
-	if (sat) {
-		fmt.Printf("Model: %v\n",analyser.Solver.Model())
-	} else {
-		fmt.Printf("UnSat. Can't log model.\n")
-	}
+	// debug part
+	// fmt.Printf("Condi: %v\n",condition)
+	// if (sat) {
+	// 	fmt.Printf("Model: %v\n",analyser.Solver.Model())
+	// } else {
+	// 	fmt.Printf("UnSat. Can't log model.\n")
+	// }
 	return sat
 }
 	
@@ -141,8 +142,8 @@ func (st *StepTracker) finished() bool {
 	return st.StepCount >= st.MaxSteps
 }
 
-func newStepTracker(maxSteps int) *StepTracker {
-	return &StepTracker{
+func newStepTracker(maxSteps int) StepTracker {
+	return StepTracker{
 		MaxSteps:  maxSteps,
 		StepCount: 0,
 	}

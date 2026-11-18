@@ -97,12 +97,12 @@ func (bc *BoolConstant) Accept(visitor Visitor) interface{} {
 	return visitor.VisitBoolConstant(bc)
 }
 
-// IntConstant представляет целочисленную константу
+// FloatConstant представляет целочисленную константу
 type FloatConstant struct {
 	Value float64
 }
 
-// NewIntConstant создаёт новую целочисленную константу
+// NewFloatConstant создаёт новую целочисленную константу
 func NewFloatConstant(value float64) *FloatConstant {
 	return &FloatConstant{Value: value}
 }

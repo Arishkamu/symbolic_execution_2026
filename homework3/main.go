@@ -244,7 +244,9 @@ AAAA "testLoopWithSymbolicBoundAndSymbolicBranching",
 	for _, fn := range funcImplemented {
 		fmt.Printf("FUNCTION TESTED: %s\n", fn)
 		// result := 
-		internal.Analyse(source, fn)
+		for _, inter := range internal.Analyse(source, fn) {
+			fmt.Println(inter.String())
+		}
 		// for _, interpreter := range result {
 		// 	fmt.Println(interpreter.String())
 		// }
