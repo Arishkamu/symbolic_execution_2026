@@ -97,6 +97,31 @@ func (bc *BoolConstant) Accept(visitor Visitor) interface{} {
 	return visitor.VisitBoolConstant(bc)
 }
 
+// FloatConstant представляет целочисленную константу
+type FloatConstant struct {
+	Value float64
+}
+
+// NewFloatConstant создаёт новую целочисленную константу
+func NewFloatConstant(value float64) *FloatConstant {
+	return &FloatConstant{Value: value}
+}
+
+// Type возвращает тип константы
+func (fc *FloatConstant) Type() ExpressionType {
+	return Float64Type
+}
+
+// String возвращает строковое представление константы
+func (fc *FloatConstant) String() string {
+	return fmt.Sprintf("%v", fc.Value)
+}
+
+// Accept реализует Visitor pattern
+func (fc *FloatConstant) Accept(visitor Visitor) interface{} {
+	return visitor.VisitFloatConstant(fc)
+}
+
 // BinaryOperation представляет бинарную операцию
 type BinaryOperation struct {
 	Left     SymbolicExpression
@@ -113,8 +138,11 @@ func NewBinaryOperation(left, right SymbolicExpression, op BinaryOperator) *Bina
 	if left.Type() != right.Type() {
 		panic(fmt.Sprintf("Unexpected expression. Expect equal types for left and right, got left.Type=%s right.Type=%s", left.Type(), right.Type()))
 	}
-	if !(op == EQ || op == NE) && left.Type() != IntType {
-		panic(fmt.Sprintf("Unexpected expression. Operation '%s' defined only for IntType but operands have=%s", op, left.Type()))
+	if !(op == EQ || op == NE) && (left.Type() != IntType) && (left.Type() != Float64Type) {
+		panic(fmt.Sprintf("Unexpected expression. Operation '%s' defined only for NumTypes but operands have=%s", op, left.Type()))
+	}
+	if op == MOD && left.Type() == Float64Type {
+		panic(fmt.Sprintf("Unexpected expression. Operation '%s' not defined for FloatType but operands have=%s", op, left.Type()))
 	}
 	return &BinaryOperation{Left: left, Right: right, Operator: op}
 }
@@ -138,6 +166,34 @@ func (bo *BinaryOperation) String() string {
 func (bo *BinaryOperation) Accept(visitor Visitor) interface{} {
 	return visitor.VisitBinaryOperation(bo)
 }
+
+
+// UnaryOperation представляет унарную операцию
+type UnaryOperation struct {
+	Operand  SymbolicExpression
+	Operator UnaryOperator
+}
+
+// NewUnaryOperation создаёт новую унарную операцию
+func NewUnaryOperation(operand SymbolicExpression, op UnaryOperator) *UnaryOperation {
+	return &UnaryOperation{Operand: operand, Operator: op}
+}
+
+// Type возвращает тип унарной операции
+func (uo *UnaryOperation) Type() ExpressionType {
+	return uo.Operand.Type()
+}
+
+// String возвращает строковое представление унарной операции
+func (uo *UnaryOperation) String() string {
+	return fmt.Sprintf("%s(%s)", uo.Operator, uo.Operand)
+}
+
+// Accept реализует Visitor pattern
+func (uo *UnaryOperation) Accept(visitor Visitor) interface{} {
+	return visitor.VisitUnaryOperation(uo)
+}
+
 
 // LogicalOperation представляет логическую операцию
 type LogicalOperation struct {
@@ -180,10 +236,10 @@ func (lo *LogicalOperation) String() string {
 	}
 }
 
-// Accept реализует Visitor pattern
 func (lo *LogicalOperation) Accept(visitor Visitor) interface{} {
 	return visitor.VisitLogicalOperation(lo)
 }
+
 
 // Операторы для бинарных выражений
 type BinaryOperator int
@@ -203,6 +259,13 @@ const (
 	LE // меньше или равно
 	GT // больше
 	GE // больше или равно
+
+	BIT_AND // побитовое И
+	BIT_OR  // побитовое ИЛИ
+	BIT_XOR // побитовое исключающее ИЛИ
+
+	LSH // побитовый сдвиг влево
+	RSH // побитовый сдвиг вправо
 )
 
 // String возвращает строковое представление оператора
@@ -230,6 +293,39 @@ func (op BinaryOperator) String() string {
 		return ">"
 	case GE:
 		return ">="
+	case BIT_AND:
+		return "&"
+	case BIT_OR:
+		return "|"
+	case BIT_XOR:
+		return "^"
+	case LSH:
+		return "<<"
+	case RSH:
+		return ">>"
+	default:
+		return "unknown"
+	}
+}
+
+// Операторы для унарных выражений
+type UnaryOperator int
+
+const (
+	UN_NEG UnaryOperator = iota
+	UN_XOR
+	UN_NOT
+)
+
+// String возвращает строковое представление унарного оператора
+func (op UnaryOperator) String() string {
+	switch op {
+	case UN_NEG:
+		return "-"
+	case UN_XOR:
+		return "^"
+	case UN_NOT:
+		return "!"
 	default:
 		return "unknown"
 	}

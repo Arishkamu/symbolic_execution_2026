@@ -16,6 +16,11 @@ type Builder struct {
 	fset *token.FileSet
 }
 
+type SsaSource struct {
+	Pkg *ssa.Package
+	Fn  *ssa.Function
+}
+
 // NewBuilder создаёт новый экземпляр Builder
 func NewBuilder() *Builder {
 	return &Builder{
@@ -39,6 +44,15 @@ func (b *Builder) ParseAndBuildSSA(source string, funcName string) (*ssa.Functio
 	// - Создайте packages.Config и загрузите пакет
 	// - Используйте ssautil.CreateProgram для создания SSA
 	// - Найдите функцию в SSA программе
+
+	ssaSource, err := b.ParseAndBuildSSAPkg(source, funcName)
+	if err != nil {
+		return nil, err
+	}
+	return ssaSource.Fn, nil
+}
+
+func (b *Builder) ParseAndBuildSSAPkg(source string, funcName string) (*SsaSource, error) {
 
 	file, err := parser.ParseFile(b.fset, "source.go", source, parser.ParseComments)
 	if err != nil {
@@ -70,6 +84,10 @@ func (b *Builder) ParseAndBuildSSA(source string, funcName string) (*ssa.Functio
 	if function == nil {
 		return nil, fmt.Errorf("Error function '%s'not found", funcName)
 	}
+	ssaSource := &SsaSource{
+		Pkg: ssaPkg,
+		Fn:  function,
+	}
 
-	return function, nil
+	return ssaSource, nil
 }

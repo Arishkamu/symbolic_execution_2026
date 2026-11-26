@@ -8,6 +8,12 @@ import (
 	"github.com/ebukreev/go-z3/z3"
 )
 
+const (
+	IntBitWidth = 64
+	Float64Eb   = 11
+	Float64Sb   = 53
+)
+
 // Z3Translator транслирует символьные выражения в Z3 формулы
 type Z3Translator struct {
 	ctx    *z3.Context
@@ -66,7 +72,15 @@ func (zt *Z3Translator) VisitVariable(expr *symbolic.SymbolicVariable) interface
 
 // VisitIntConstant транслирует целочисленную константу в Z3
 func (zt *Z3Translator) VisitIntConstant(expr *symbolic.IntConstant) interface{} {
-	return zt.ctx.FromInt(expr.Value, zt.ctx.IntSort()).(z3.Int)
+	return zt.ctx.FromInt(expr.Value, zt.ctx.BVSort(IntBitWidth))
+}
+
+func (zt *Z3Translator) VisitFloatConstant(expr *symbolic.FloatConstant) interface{} {
+	if (expr.Type() == symbolic.Float64Type) {
+		e := zt.ctx.FromFloat64(expr.Value, zt.ctx.FloatSort(Float64Eb, Float64Sb))
+		return e
+	}
+	panic("Not implemented yet. Float32.")
 }
 
 // VisitBoolConstant транслирует булеву константу в Z3
@@ -106,45 +120,126 @@ func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) int
 		default:
 			panic(fmt.Errorf("Operation '%s' not supported for bool expressions", expr.Operator))
 		}
-
-	case symbolic.IntType:
-		leftInt, err := zt.castToZ3IntType(left)
+	
+	case symbolic.Float64Type:
+		leftFloat, err := zt.castToZ3FloatType(left)
 		if err != nil {
 			panic(fmt.Errorf("Error in binary operation: left operand: %w", err))
 		}
-		rightInt, err := zt.castToZ3IntType(right)
+		rightFloat, err := zt.castToZ3FloatType(right)
 		if err != nil {
 			panic(fmt.Errorf("Error in binary operation: right operand: %w", err))
 		}
 
 		switch expr.Operator {
 		case symbolic.ADD:
-			return leftInt.Add(rightInt)
+			return leftFloat.Add(rightFloat)
 		case symbolic.SUB:
-			return leftInt.Sub(rightInt)
+			return leftFloat.Sub(rightFloat)
 		case symbolic.MUL:
-			return leftInt.Mul(rightInt)
+			return leftFloat.Mul(rightFloat)
 		case symbolic.DIV:
-			return leftInt.Div(rightInt)
-		case symbolic.MOD:
-			return leftInt.Mod(rightInt)
+			return leftFloat.Div(rightFloat)
 		case symbolic.EQ:
-			return leftInt.Eq(rightInt)
+			return leftFloat.IEEEEq(rightFloat)
 		case symbolic.NE:
-			return leftInt.NE(rightInt)
+			return leftFloat.IEEEEq(rightFloat).Not()
 		case symbolic.LT:
-			return leftInt.LT(rightInt)
+			return leftFloat.LT(rightFloat)
 		case symbolic.LE:
-			return leftInt.LE(rightInt)
+			return leftFloat.LE(rightFloat)
 		case symbolic.GT:
-			return leftInt.GT(rightInt)
+			return leftFloat.GT(rightFloat)
 		case symbolic.GE:
-			return leftInt.GE(rightInt)
+			return leftFloat.GE(rightFloat)
+		default:
+			panic(fmt.Errorf("Operation '%s' not supported for float expressions", expr.Operator))
+		}
+
+	case symbolic.IntType:
+		leftBV, err := zt.castToZ3BVType(left)
+		if err != nil {
+			panic(fmt.Errorf("Error in binary operation: left operand: %w", err))
+		}
+		rightBV, err := zt.castToZ3BVType(right)
+		if err != nil {
+			panic(fmt.Errorf("Error in binary operation: right operand: %w", err))
+		}
+
+		switch expr.Operator {
+		case symbolic.ADD:
+			return leftBV.Add(rightBV)
+		case symbolic.SUB:
+			return leftBV.Sub(rightBV)
+		case symbolic.MUL:
+			return leftBV.Mul(rightBV)
+		case symbolic.DIV:
+			return leftBV.SDiv(rightBV)
+		case symbolic.MOD:
+			return leftBV.SMod(rightBV)
+		case symbolic.EQ:
+			return leftBV.Eq(rightBV)
+		case symbolic.NE:
+			return leftBV.NE(rightBV)
+		case symbolic.LT:
+			return leftBV.SLT(rightBV)
+		case symbolic.LE:
+			return leftBV.SLE(rightBV)
+		case symbolic.GT:
+			return leftBV.SGT(rightBV)
+		case symbolic.GE:
+			return leftBV.SGE(rightBV)
+
+		case symbolic.BIT_AND:
+			return leftBV.And(rightBV)
+		case symbolic.BIT_OR:
+			return leftBV.Or(rightBV)
+		case symbolic.BIT_XOR:
+			return leftBV.Xor(rightBV)
+		case symbolic.LSH:
+			return leftBV.Lsh(rightBV)
+		case symbolic.RSH:
+			return leftBV.SRsh(rightBV)
+
 		default:
 			panic(fmt.Errorf("Operation '%s' not supported for int expressions", expr.Operator))
 		}
 	default:
 		panic("не реализовано")
+	}
+}
+
+// VisitUnaryOperation implements [symbolic.Visitor].
+func (zt *Z3Translator) VisitUnaryOperation(expr *symbolic.UnaryOperation) interface{} {
+	operand := expr.Operand.Accept(zt)
+
+	switch expr.Operand.Type() {
+	case symbolic.IntType:
+		operandBV, err := zt.castToZ3BVType(operand)
+		if err != nil {
+			panic(fmt.Errorf("Error in unary operation: operand: %w", err))
+		}
+		switch expr.Operator {
+		case symbolic.UN_NEG:
+			return operandBV.Neg()
+		case symbolic.UN_XOR:
+			return operandBV.Not()
+		default:
+			panic(fmt.Errorf("Operation '%s' not supported. Expect it to be simplified", expr.Operator))
+		}
+	case symbolic.Float64Type:
+		operandFloat, err := zt.castToZ3FloatType(operand)
+		if err != nil {
+			panic(fmt.Errorf("Error in unary operation: operand: %w", err))
+		}
+		switch expr.Operator {
+		case symbolic.UN_NEG:
+			return operandFloat.Neg()
+		default:
+			panic(fmt.Errorf("Operation '%s' not supported for Float.", expr.Operator))
+		}
+	default:
+		panic(fmt.Errorf("не реализовано: %s", expr.Operator))
 	}
 }
 
@@ -189,7 +284,9 @@ func (zt *Z3Translator) VisitLogicalOperation(expr *symbolic.LogicalOperation) i
 func (zt *Z3Translator) createZ3Variable(name string, exprType symbolic.ExpressionType) z3.Value {
 	switch exprType {
 	case symbolic.IntType:
-		return zt.ctx.IntConst(name)
+		return zt.ctx.BVConst(name, IntBitWidth)
+	case symbolic.Float64Type:
+		return zt.ctx.Const(name, zt.ctx.FloatSort(Float64Eb, Float64Sb))
 	case symbolic.BoolType:
 		return zt.ctx.BoolConst(name)
 	default:
@@ -201,7 +298,9 @@ func (zt *Z3Translator) createZ3Variable(name string, exprType symbolic.Expressi
 func (zt *Z3Translator) castToZ3Type(value interface{}, targetType symbolic.ExpressionType) (z3.Value, error) {
 	switch targetType {
 	case symbolic.IntType:
-		return zt.castToZ3IntType(value)
+		return zt.castToZ3BVType(value)
+	case symbolic.Float64Type:
+		return zt.castToZ3FloatType(value)
 	case symbolic.BoolType:
 		return zt.castToZ3BoolType(value)
 	default:
@@ -209,10 +308,18 @@ func (zt *Z3Translator) castToZ3Type(value interface{}, targetType symbolic.Expr
 	}
 }
 
-func (zt *Z3Translator) castToZ3IntType(value interface{}) (z3.Int, error) {
-	z3Value, ok := value.(z3.Int)
+func (zt *Z3Translator) castToZ3BVType(value interface{}) (z3.BV, error) {
+	z3Value, ok := value.(z3.BV)
 	if !ok {
-		return z3Value, fmt.Errorf("Error: expected z3.Int, got %T", value)
+		return z3Value, fmt.Errorf("Error: expected z3.BV, got %T", value)
+	}
+	return z3Value, nil
+}
+
+func (zt *Z3Translator) castToZ3FloatType(value interface{}) (z3.Float, error) {
+	z3Value, ok := value.(z3.Float)
+	if !ok {
+		return z3Value, fmt.Errorf("Error: expected z3.Float, got %T", value)
 	}
 	return z3Value, nil
 }

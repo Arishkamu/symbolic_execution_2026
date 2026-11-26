@@ -8,8 +8,10 @@ import (
 type Visitor interface {
 	VisitVariable(expr *SymbolicVariable) interface{}
 	VisitIntConstant(expr *IntConstant) interface{}
+	VisitFloatConstant(expr *FloatConstant) interface{}
 	VisitBoolConstant(expr *BoolConstant) interface{}
 	VisitBinaryOperation(expr *BinaryOperation) interface{}
+	VisitUnaryOperation(expr *UnaryOperation) interface{}
 	VisitLogicalOperation(expr *LogicalOperation) interface{}
 	// TODO: Добавьте методы для других типов выражений по мере необходимости
 }
@@ -36,6 +38,11 @@ func (sp *StringPrinter) VisitIntConstant(expr *IntConstant) interface{} {
 	return nil
 }
 
+func (sp *StringPrinter) VisitFloatConstant(expr *FloatConstant) interface{} {
+	sp.result.WriteString(expr.String())
+	return nil
+}
+
 func (sp *StringPrinter) VisitBoolConstant(expr *BoolConstant) interface{} {
 	sp.result.WriteString(expr.String())
 	return nil
@@ -50,6 +57,15 @@ func (sp *StringPrinter) VisitBinaryOperation(expr *BinaryOperation) interface{}
 	expr.Right.Accept(sp)
 	sp.result.WriteString(")")
 
+	return nil
+}
+
+// VisitUnaryOperation implements [Visitor].
+func (sp *StringPrinter) VisitUnaryOperation(expr *UnaryOperation) interface{} {
+	sp.result.WriteString(expr.Operator.String())
+	sp.result.WriteString("(")
+	expr.Operand.Accept(sp)
+	sp.result.WriteString(")")
 	return nil
 }
 

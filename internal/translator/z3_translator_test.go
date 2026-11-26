@@ -1,6 +1,7 @@
 package translator
 
 import (
+	"fmt"
 	. "symbolic-execution-course/internal/symbolic"
 	"testing"
 
@@ -27,6 +28,7 @@ func TestTranslatedStringAndType(t *testing.T) {
 	b := NewSymbolicVariable("b", BoolType)
 
 	const10 := NewIntConstant(10)
+	str10 := fmt.Sprintf("#x%016x", 10)
 	constFalse := NewBoolConstant(false)
 
 	sum := NewBinaryOperation(x, y, ADD)
@@ -36,22 +38,21 @@ func TestTranslatedStringAndType(t *testing.T) {
 	le := NewBinaryOperation(const10, y, LE)
 
 	log := NewLogicalOperation([]SymbolicExpression{a, b}, AND)
-
 	tests := []struct {
 		expr SymbolicExpression
 		str  string
 		tpe  z3.Kind
 	}{
-		{x, "x", z3.KindInt},
+		{x, "x", z3.KindBV},
 		{a, "a", z3.KindBool},
-		{const10, "10", z3.KindInt},
+		{const10, str10, z3.KindBV},
 		{constFalse, "false", z3.KindBool},
 
-		{sum, "(+ x y)", z3.KindInt},
-		{mod, "(mod x 10)", z3.KindInt},
+		{sum, "(bvadd x y)", z3.KindBV},
+		{mod, "(bvsmod x " + str10 + ")", z3.KindBV},
 		{eq, "(= x y)", z3.KindBool},
 		{eqBool, "(= a b)", z3.KindBool},
-		{le, "(<= 10 y)", z3.KindBool},
+		{le, "(bvsle " + str10 + " y)", z3.KindBool},
 		{log, "(and a b)", z3.KindBool},
 	}
 
@@ -174,3 +175,94 @@ func TestIdentety(t *testing.T) {
 
 	expectSat(t, translator, NewBinaryOperation(y, plusZero, EQ), true)
 }
+
+
+func TestMySmall(t *testing.T) {
+	zt := NewZ3Translator()
+	// 10 & 3
+	ten := NewIntConstant(10)
+	three := NewIntConstant(3)
+	two := NewIntConstant(2)
+	// bitAnd := NewBinaryOperation(ten, three, BIT_AND)
+
+
+	tenZ3, ok := zt.ctx.FromInt(ten.Value, zt.ctx.IntSort()).(z3.Int)
+	if !ok {
+		panic("Error: expected z3.Int")
+	}
+	threeZ3, ok := zt.ctx.FromInt(three.Value, zt.ctx.IntSort()).(z3.Int)
+	if !ok {
+		panic("Error: expected z3.Int")
+	}
+	twoZ3, ok := zt.ctx.FromInt(two.Value, zt.ctx.IntSort()).(z3.Int)
+	if !ok {
+		panic("Error: expected z3.Int")
+	}
+
+	tenBV := tenZ3.ToBV(64)
+	threeBV := threeZ3.ToBV(64)
+	// 10 & 3 == 2
+	res := tenBV.And(threeBV).And(twoZ3.ToBV(64)).SToInt().Eq(twoZ3)
+	solver := z3.NewSolver(zt.GetContext().(*z3.Context))
+	solver.Assert(res)
+	ch, err := solver.Check()
+	if err != nil {
+		t.Errorf("Checker on , error: ")
+	}
+	fmt.Printf("Check: %v", ch)
+}
+
+func TestBitOps(t *testing.T) {
+/*	
+	source := `
+package main
+
+func testBitwise(a, b int) int {
+	and := a & b
+	or := a | b
+	xor := a ^ b
+
+	if (and | or) > 0 {
+		return xor << 1
+	}
+	return xor >> 1
+}
+`
+*/
+	a := NewSymbolicVariable("a", IntType)
+	b := NewSymbolicVariable("b", IntType)
+	expr := NewBinaryOperation(
+		NewBinaryOperation(
+			NewBinaryOperation(
+				a,
+				b,
+				BIT_AND,
+			),
+			NewBinaryOperation(
+				a,
+				b,
+				BIT_OR,
+			),
+			BIT_OR,
+		),
+		NewIntConstant(0),
+		GT,
+	)
+	zt := NewZ3Translator()
+	simpifiedExpr := (&Simplifier{}).Simplify(expr)
+
+	// aZ3 := zt.ctx.IntConst("a")
+	// bZ3 := zt.ctx.IntConst("b")
+	
+	// andZ3 := aZ3.ToBV(64).And(bZ3.ToBV(64)).SToInt()
+	// orZ3  := aZ3.ToBV(64).Or(bZ3.ToBV(64)).SToInt()
+	// z3Expr := (((andZ3.ToBV(64)).Or(orZ3.ToBV(64))).SToInt()).GT(zt.ctx.FromInt(0, zt.ctx.IntSort()).(z3.Int))
+	// fmt.Printf("z3Expr:\n%s\n", z3Expr)
+	
+	// andZ3 := aZ3.ToBV(64).And(bZ3.ToBV(64))
+	// orZ3  := aZ3.ToBV(64).Or(bZ3.ToBV(64))
+	// z3Expr := ((andZ3.Or(orZ3))).SGT(zt.ctx.FromInt(0, zt.ctx.IntSort()).(z3.Int).ToBV(64))
+	
+	expectSat(t, zt, simpifiedExpr, true)
+}
+
