@@ -34,8 +34,8 @@ func DefaultOptions() AnalyseOptions {
     return AnalyseOptions{
         PathSelector:  &BfsPathSelector{},
         MaxSteps:      10000,
-        MaxLoopUnroll: 5,
-        MaxJumpDepth:  50,
+        MaxLoopUnroll: 15,
+        MaxJumpDepth:  100,
     }
 }
 
