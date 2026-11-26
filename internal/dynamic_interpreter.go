@@ -29,7 +29,7 @@ type Interpreter struct {
 type CallStackFrame struct {
 	Function         *ssa.Function
 	LocalMemory      map[string]symbolic.SymbolicExpression
-	ReturnValue      symbolic.SymbolicExpression
+	ReturnValues     []symbolic.SymbolicExpression
 	Block            *ssa.BasicBlock
 	PreviousBlock    *ssa.BasicBlock
 	InstructionIndex int
@@ -211,9 +211,9 @@ func (interpreter *Interpreter) interpretJump(instruction *ssa.Jump) []Interpret
 func (interpreter *Interpreter) interpretReturn(instruction *ssa.Return) []Interpreter {
 	curFrame := interpreter.curFrame()
 
-	if len(instruction.Results) > 0 {
-		result := interpreter.resolveExpression(instruction.Results[0])
-		curFrame.ReturnValue = result
+	for _, instrResult := range instruction.Results {
+		result := interpreter.resolveExpression(instrResult)
+		curFrame.ReturnValues = append(curFrame.ReturnValues, result)
 	}
 
 	return interpreter.finishInterpreter(Returned, "")
@@ -402,8 +402,12 @@ func (interpreter *Interpreter) String() string {
 			}
 		}
 
-		if curFrame.ReturnValue != nil {
-			result += fmt.Sprintf("ReturnValue: %s\n", curFrame.ReturnValue.String())
+		if curFrame.ReturnValues != nil {
+			result += fmt.Sprintf("ReturnValues len=%d: ", len(curFrame.ReturnValues))
+			for _, retVal := range curFrame.ReturnValues {
+				result += fmt.Sprintf("%s, ", retVal.String())
+			}
+			result += "\n"
 		}
 	}
 
