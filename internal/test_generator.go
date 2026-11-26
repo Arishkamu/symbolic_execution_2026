@@ -19,51 +19,52 @@ import (
 func GenerateTestFile(sourceFile string) string {
     filePath, err := filepath.Abs(filename)
     if err != nil {
-        panic(fmt.Errorf("Generate tests: Error while getting filapath: %w", err))
+        panic(fmt.Sprintf("Generate tests: Error while getting filapath: %w", err))
 	}
 	ext := filepath.Ext(filePath)
 	if ext != ".go" {
-		panic(fmt.Errorf("Generate tests: Error file needs to be '.go': %w", err))
+		panic(fmt.Sprintf("Generate tests: Error file needs to be '.go': %w", err))
 	}
 	source, err := os.ReadFile(filePath)
 	if err != nil {
-		panic(fmt.Errorf("Generate tests: Error while reading file: %w", err))
+		panic(fmt.Sprintf("Generate tests: Error while reading file: %w", err))
 	}
 
 
 	file, err := parser.ParseFile(token.NewFileSet(), filePath, source, 0)
 	if err != nil {
-		panic(fmt.Errorf("Generate tests: Error while parsing file: %w", err))
+		panic(fmt.Sprintf("Generate tests: Error while parsing file: %w", err))
 	}
 
 	var funcNames []string
+	var body strings.Builder
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl);
         if !ok || fn.Body == nil {
             continue
         }
-		analyzeAndTestFunc(source, fn.Name.Name)
+		testCases := analyzeAndTestFunc(source, fn.Name.Name)
+		generateTestBody(&body, fn.Name.Name, testCases)
     }
 
 
 	testsFile := strings.TrimSuffix(filePath, ext) + "_test.go"
+	createTestFile(body.String(), testsFile, file.Name.Name)
 
     return testsFile
 }
 
 
-func analyzeAndTestFunc(source []byte, funcName string) {
+func analyzeAndTestFunc(source []byte, funcName string) *[]TestCase {
+	testCases := make([]TestCase)
 	states := Analyse(source, name)
-	var body strings.Builder
-	initTestBody()
-	fmt.Fprintf(&body, "func TestGenerated_%s(t *testing.T) {\n", name)
 	var dropped strings.Builder
 	for _, state := range states {
 		if state.Status.Status == Running {
 			panic("Unexpected behavour. Analyse returned running interpreter")
 		}
 		if state.Status.Status == Dropped {
-			dropped.WriteString(fmt.Sprintf("Dropped in func='%s' with message='%s', in pathCondition=%s", funcName, state.Status.Message, state.PathCondition))
+			dropped.WriteString(fmt.Sprintf("Dropped in func='%s' with message='%s', in pathCondition=%s\n", funcName, state.Status.Message, state.PathCondition))
 		}
 		
 		if sat := state.Analyser.solverCheck(state.PathFormula); !sat {
@@ -71,34 +72,15 @@ func analyzeAndTestFunc(source []byte, funcName string) {
 		}
 		model := state.Analyser.Solver.Model()
 		
-		...
-		generateTestBody()
-
-		frame := state.frame()
-		arguments := make([]string, len(frame.Function.Params))
-
-		for i, param := range frame.Function.Params {
-			expression := symbolic.NewSymbolicVariable(param.Name(), expressionType(param.Type()))
-			value, err := translator.TranslateExpression(expression)
-			if err != nil {
-				panic(err)
-			}
-			literal, floating := modelLiteral(model, value.(z3.Value), expression.Type())
-			usesMath = usesMath || floating
-			typ := types.TypeString(param.Type(), func(p *types.Package) string {
-				if p == frame.Function.Pkg.Pkg {
-					return ""
-				}
-				return p.Name()
-			})
-			arguments[i] = fmt.Sprintf("%s(%s)", typ, literal)
-		}
-		fmt.Fprintf(&body, "t.Run(\"path_%d\", func(t *testing.T) {\n", cases)
-		call := fmt.Sprintf("%s(%s)", name, strings.Join(arguments, ", "))
-		if state.Status == Panicked {
-			body.WriteString("completed := false\ndefer func() { value := recover(); if completed { t.Fatal(\"expected panic\") }; _ = value }()\n")
-			body.WriteString(call + "\ncompleted = true\n")
-		} else {
+		args, res := getModelArgs()
+		testCases = append(testCases, TestCase{
+			Args: args,
+			Predicted: res,
+			Status: state.Status,
+		})
+	}
+	fmt.Printf(dropped.String())
+	return testCases
 }
 
 
@@ -108,11 +90,10 @@ type TestCase struct {
 	Status     InterpreterState
 }
 
-func generateTestBody(body *strings.Builder funcName string, cases []TestCase) {
-	body.WriteString(fmt.Sprintf("func Test%s(t *testing.T) {\n", funcName))
-	defer builder.WriteString("}\n\n")
+func generateTestBody(body *strings.Builder, funcName string, cases []TestCase) {
+	body.WriteString(fmt.Sprint("func TestGenerated_%s(t *testing.T) {\n", funcName))
+	defer body.WriteString("}\n\n")
 
-	wasPanicCase := false
     for _, cs := range cases {
 		strArgs := make([]string, len(parts))
 		for i, arg := range cs.Args {
@@ -142,43 +123,25 @@ func generateTestBody(body *strings.Builder funcName string, cases []TestCase) {
     }
 }
 
-func createTestFile(filename string) (*bufio.Writer, *os.File, error) {
-	tmpl, err := template.New("tests").Parse(testTemplate)
-    if err != nil {
-        return "", err
-    }
+func createTestFile(body string, testPath filepath, fileName string) {
+	var fileBody strings.Builder
 
-    var builder strings.Builder
+	fileBody.WriteString(fmt.Sprintf("package %s\n\n", file.Name.Name))
 
-    builder.WriteString("package main\n\n")
-    builder.WriteString(`import (
+	fileBody.WriteString(`import (
 	"testing"
 )
 `)
-    file, err := os.Create(filename)
-    if err != nil {
-        return nil, nil, err
-    }
 
-	builder.WriteString(`
-func panicCheck(t *testing.T, panicExpect string, fn func()) {
-	defer func() {
-        r := recover()
-        if r == nil {
-			t.Errorf("Expected panic, but no panic occurred")
-		}
-		if r != panicExpect {
-			t.Errorf("Expected panic with message='%%s', but no panic occurred", panicExpect)
-		}
-    }()
+	fileBody.WriteString(body)
+	formatted, err := format.Source([]byte(fileBody.String()))
+	if err != nil {
+		panic(fmt.Sprintf("Generate tests: Error while formating generated file body: %w", err))
+	}
 
-    fn()
-}
-	`)
-
-    writer := bufio.NewWriter(file)
-
-    return writer, file, nil
+	if err := os.WriteFile(testPath, formatted, 0644); err != nil {
+		panic(fmt.Sprintf("Generate tests: Error while writing generated file: %w", err))
+	}
 }
 
 
