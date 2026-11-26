@@ -222,6 +222,8 @@ func (zt *Z3Translator) VisitUnaryOperation(expr *symbolic.UnaryOperation) inter
 		switch expr.Operator {
 		case symbolic.UN_NEG:
 			return operandBV.Neg()
+		case symbolic.UN_XOR:
+			return operandBV.Not()
 		default:
 			panic(fmt.Errorf("Operation '%s' not supported. Expect it to be simplified", expr.Operator))
 		}
