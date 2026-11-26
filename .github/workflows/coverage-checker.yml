@@ -54,9 +54,11 @@ jobs:
           run: go build -o homework5/coverage_checker ./homework5/coverage_checker.go
 
         - name: Run coverage_checker on file ${{ env.FILE_PATH }}
-          run: ./homework5/coverage_checker "$FILE_PATH" > coverage_output.txt 2>&1
+          run: |
+            ./homework5/coverage_checker "$FILE_PATH" > coverage_output.txt 2>&1
+            cat coverage_output.txt
 
-        - name: Upload build reports
+        - name: Upload coverage checker reports
           uses: actions/upload-artifact@v4
           with:
             name: coverage-checker-report
@@ -84,7 +86,7 @@ jobs:
         - name: Make coverage
           run: make coverage
 
-        - name: Upload build reports
+        - name: Upload make coverage reports
           uses: actions/upload-artifact@v4
           with:
             name: make-coverage-report
