@@ -32,38 +32,43 @@ func GenerateTestFile(sourceFile string) string {
 		panic(fmt.Sprintf("Generate tests: Error while reading file: %v", err))
 	}
 
-
 	file, err := parser.ParseFile(token.NewFileSet(), filePath, source, 0)
 	if err != nil {
 		panic(fmt.Sprintf("Generate tests: Error while parsing file: %v", err))
 	}
 
 	var body strings.Builder
-	imports := make(Imports)
-	imports["testing"] = true
+	info := Info{
+		Imports: make(map[string]bool),
+		PanicCheck: false,
+		FileName: strings.TrimSuffix(filepath.Base(filePath), ext),
+		PkgName: file.Name.Name,
+	}
+	info.Imports["testing"] = true
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl);
         if !ok || fn.Body == nil {
             continue
         }
-		testCases := analyzeAndTestFunc(source, fn.Name.Name, &imports)
-		generateTestBody(&body, fn.Name.Name, testCases)
+		info.FuncName = fn.Name.Name
+		testCases := analyzeAndTestFunc(source, &info)
+		generateTestBody(&body, testCases, &info)
     }
 
 
 	testsFile := strings.TrimSuffix(filePath, ext) + "_test.go"
-	createTestFile(body.String(), testsFile, file.Name.Name, imports)
+	createTestFile(body.String(), testsFile, info)
 
     return testsFile
 }
 
-func createTestFile(body string, testPath string, fileName string, imports Imports) {
+func createTestFile(body string, testPath string, info Info) {
 	var fileBody strings.Builder
 
-	fileBody.WriteString(fmt.Sprintf("package %s\n\n", fileName))
+	fileBody.WriteString(fmt.Sprintf("package %s\n\n", info.PkgName))
 
 	fileBody.WriteString("import (\n")
-	for k, v := range imports {
+	for k, v := range info.Imports {
 		if v {
 			fileBody.WriteString(fmt.Sprintf("\t%#v\n", k))
 		}
@@ -71,7 +76,8 @@ func createTestFile(body string, testPath string, fileName string, imports Impor
 	
 	fileBody.WriteString(")\n")
 
-	fileBody.WriteString(fmt.Sprintf(`
+	if info.PanicCheck {
+		fileBody.WriteString(fmt.Sprintf(`
 func panicCheck_%s(t *testing.T, panicExpect string, fn func()) {
 	defer func() {
         r := recover()
@@ -86,7 +92,8 @@ func panicCheck_%s(t *testing.T, panicExpect string, fn func()) {
     fn()
 }
 `, 
-	fileName))
+		info.FileName))
+	}
 
 	fileBody.WriteString(body)
 	// fmt.Printf("======\n\n%s\n=======\n", fileBody.String())
@@ -101,8 +108,8 @@ func panicCheck_%s(t *testing.T, panicExpect string, fn func()) {
 }
 
 
-func analyzeAndTestFunc(source []byte, funcName string, imports *Imports) []TestCase {
-	states := Analyse(string(source), funcName)
+func analyzeAndTestFunc(source []byte, info *Info) []TestCase {
+	states := Analyse(string(source), info.FuncName)
 	testCases := make([]TestCase, 0)
 	dropped := 0
 	for _, state := range states {
@@ -140,7 +147,7 @@ func analyzeAndTestFunc(source []byte, funcName string, imports *Imports) []Test
 				panic(fmt.Sprintf("Generate tests: Unexpected behavior. Can't translate argument expression %s: %v", argSymbolic, err))
 			}
 			arg := model.Eval(argZ3.(z3.Value), true)
-			testCase.Args = append(testCase.Args, getGoLiteral(arg, param.Type(), argSymbolic.Type(), imports))
+			testCase.Args = append(testCase.Args, getGoLiteral(arg, param.Type(), argSymbolic.Type(), info))
 		}
 		if state.Status.Status == Returned {
 			resTypes := curFrame.Function.Signature.Results()
@@ -150,8 +157,10 @@ func analyzeAndTestFunc(source []byte, funcName string, imports *Imports) []Test
 					panic(fmt.Sprintf("Generate tests: Unexpected behavior. Can't translate argument expression %s: %v", retVal, err))
 				}
 				ret := model.Eval(retZ3.(z3.Value), true)
-				testCase.Predicted = append(testCase.Predicted, getGoLiteral(ret, resTypes.At(i).Type(), retVal.Type(), imports))
+				testCase.Predicted = append(testCase.Predicted, getGoLiteral(ret, resTypes.At(i).Type(), retVal.Type(), info))
 			}
+		} else if state.Status.Status == Panic {
+			info.PanicCheck = true
 		}
 		testCases = append(testCases, testCase)
 	}
@@ -159,7 +168,13 @@ func analyzeAndTestFunc(source []byte, funcName string, imports *Imports) []Test
 	return testCases
 }
 
-type Imports map[string]bool
+type Info struct {
+	Imports    map[string]bool
+	PanicCheck bool
+	FileName   string
+	FuncName   string
+	PkgName    string
+}
 type TestCase struct {
     Args       []string
     Predicted  []string
@@ -168,8 +183,8 @@ type TestCase struct {
 }
 
 
-func generateTestBody(body *strings.Builder, funcName string, cases []TestCase) {
-	body.WriteString(fmt.Sprintf("func TestGenerated_%s(t *testing.T) {\n", funcName))
+func generateTestBody(body *strings.Builder, cases []TestCase, info *Info) {
+	body.WriteString(fmt.Sprintf("func TestGenerated_%s(t *testing.T) {\n", info.FuncName))
 
     for iCS, cs := range cases {
 		argsString := strings.Join(cs.Args, ", ")
@@ -181,11 +196,11 @@ func generateTestBody(body *strings.Builder, funcName string, cases []TestCase) 
 		case Returned:
 			resStr := make([]string, len(cs.Predicted))
 			for i := 0; i < len(cs.Predicted); i++ {
-				resStr[i] = fmt.Sprintf("res%dTC%d", i, iCS)
+				resStr[i] = fmt.Sprintf("res%dtc%d", i, iCS)
 			}
 			resiStr := strings.Join(resStr, ", ")
             // body.WriteString(fmt.Sprintf("\n\t// TestCase_PathCondition: %s\n", cs.PathCond))
-			body.WriteString(fmt.Sprintf("\t%s := %s(%s)\n", resiStr, funcName, argsString))
+			body.WriteString(fmt.Sprintf("\t%s := %s(%s)\n", resiStr, info.FuncName, argsString))
 			for i, predict := range cs.Predicted {
 				body.WriteString(fmt.Sprintf(`
 	if %s != %s {
@@ -195,8 +210,8 @@ func generateTestBody(body *strings.Builder, funcName string, cases []TestCase) 
 				resStr[i], predict, resStr[i], predict, resStr[i]))
 			}
 		case Panic:
-			body.WriteString(fmt.Sprintf("\tpanicCheck(t, %#v, func() { %s(%s) })\n", 
-				cs.Status.Message, funcName, argsString))
+			body.WriteString(fmt.Sprintf("\tpanicCheck_%s(t, %#v, func() { %s(%s) })\n", 
+				info.FileName, cs.Status.Message, info.FuncName, argsString))
 		default:
 			panic("Unexpected status while generating test body")
 		}
@@ -206,7 +221,7 @@ func generateTestBody(body *strings.Builder, funcName string, cases []TestCase) 
 
 
 
-func getGoLiteral(value z3.Value, ty types.Type, smbType symbolic.ExpressionType, imports *Imports) string {
+func getGoLiteral(value z3.Value, ty types.Type, smbType symbolic.ExpressionType, info *Info) string {
     switch smbType {
     case symbolic.BoolType:
         boolVal, isLiteral := value.(z3.Bool).AsBool()
@@ -225,7 +240,7 @@ func getGoLiteral(value z3.Value, ty types.Type, smbType symbolic.ExpressionType
 		if !ok {
 			panic("Generate tests: Expected concreet float value")
 		}
-		(*imports)["math"] = true
+		info.Imports["math"] = true
 		if floatVal == nil {
 			return "math.NaN()"
 		}
@@ -239,7 +254,7 @@ func getGoLiteral(value z3.Value, ty types.Type, smbType symbolic.ExpressionType
 		case math.IsInf(flt, -1):
 			return "math.Inf(-1)"
 		default:
-			(*imports)["math"] = false
+			info.Imports["math"] = false
 			return strconv.FormatFloat(flt, 'g', -1, 64)
 		}
     default:
