@@ -29,7 +29,7 @@ type Interpreter struct {
 type CallStackFrame struct {
 	Function         *ssa.Function
 	LocalMemory      map[string]symbolic.SymbolicExpression
-	ReturnValue      symbolic.SymbolicExpression
+	ReturnValues     []symbolic.SymbolicExpression
 	Block            *ssa.BasicBlock
 	PreviousBlock    *ssa.BasicBlock
 	InstructionIndex int
@@ -87,11 +87,12 @@ func (interpreter *Interpreter) clone() Interpreter {
 	clone.CallStack = make([]CallStackFrame, len(interpreter.CallStack))
 
     for i, frame := range interpreter.CallStack {
-        clone.CallStack[i] = frame
-		frame.LocalMemory = make(map[string]symbolic.SymbolicExpression, len(interpreter.CallStack[i].LocalMemory))
-		for k, v := range interpreter.CallStack[i].LocalMemory {
-			frame.LocalMemory[k] = v
+        cloneFrame := frame
+		cloneFrame.LocalMemory = make(map[string]symbolic.SymbolicExpression, len(frame.LocalMemory))
+		for k, v := range frame.LocalMemory {
+			cloneFrame.LocalMemory[k] = v
 		}
+		clone.CallStack[i] = cloneFrame
 	}
 
 	clone.BlockVisits = make(map[*ssa.BasicBlock]int, len(interpreter.BlockVisits))
@@ -105,7 +106,6 @@ func (interpreter *Interpreter) clone() Interpreter {
 func (interpreter *Interpreter) moveBlock(newBlock *ssa.BasicBlock) {
 	curFrame := interpreter.curFrame()
 	interpreter.BlockVisits[curFrame.Block]++
-	fmt.Printf("Interpreter: %p: curFrame.Block: %s = %s\n", interpreter, curFrame.Block, interpreter.BlockVisits[curFrame.Block])
 	curFrame.PreviousBlock = curFrame.Block
 	curFrame.Block = newBlock
 	curFrame.InstructionIndex = 0
@@ -147,7 +147,7 @@ func (interpreter *Interpreter) interpretDynamically(element ssa.Instruction) []
 	case *ssa.Return:
 		return interpreter.interpretReturn(instr)
 	case *ssa.Phi:
-		return interpreter.interpretPhi(instr)
+		return interpreter.interpretAllPhi(instr)
 	case *ssa.Panic:
 		return interpreter.interpretPanic(instr)
 	case *ssa.MakeInterface:
@@ -211,9 +211,9 @@ func (interpreter *Interpreter) interpretJump(instruction *ssa.Jump) []Interpret
 func (interpreter *Interpreter) interpretReturn(instruction *ssa.Return) []Interpreter {
 	curFrame := interpreter.curFrame()
 
-	if len(instruction.Results) > 0 {
-		result := interpreter.resolveExpression(instruction.Results[0])
-		curFrame.ReturnValue = result
+	for _, instrResult := range instruction.Results {
+		result := interpreter.resolveExpression(instrResult)
+		curFrame.ReturnValues = append(curFrame.ReturnValues, result)
 	}
 
 	return interpreter.finishInterpreter(Returned, "")
@@ -234,27 +234,35 @@ func (interpreter *Interpreter) interpretPanic(instruction *ssa.Panic) []Interpr
 	return interpreter.finishInterpreter(Panic, panicMsg)
 }
 
-func (interpreter *Interpreter) interpretPhi(instruction *ssa.Phi) []Interpreter {
+func (interpreter *Interpreter) interpretAllPhi(instruction *ssa.Phi) []Interpreter {
 	curFrame := interpreter.curFrame()
     if curFrame.PreviousBlock == nil {
         panic("Error. Cannot resolve Phi: previous block is nil")
     }
 
-	var value ssa.Value
+	results := make(map[string]symbolic.SymbolicExpression)
     for i, pred := range instruction.Block().Preds {
 		if pred == curFrame.PreviousBlock && i < len(instruction.Edges) {
-			value = instruction.Edges[i]
+			for curFrame.InstructionIndex < len(curFrame.Block.Instrs) {
+				instr, ok := interpreter.curInstruction().(*ssa.Phi)
+				if !ok {
+					break
+				}
+				value := instr.Edges[i]
+				results[instr.Name()] = interpreter.resolveExpression(value)
+				interpreter.incrInstructionIndex()
+			}
 			break
 		}
 	}
-	if value == nil {
-		panic("Error. Cannot find corresponding value in Phi")
+	if len(results) <= 0 {
+		panic("Error. Cannot find corresponding edges in Phi")
 	}
 	
-	result := interpreter.resolveExpression(value)
-	interpreter.curFrame().LocalMemory[instruction.Name()] = result
+	for k, v := range results {
+		curFrame.LocalMemory[k] = v
+	}
 
-	interpreter.incrInstructionIndex()
 	return []Interpreter{*interpreter}
 }
 
@@ -402,8 +410,12 @@ func (interpreter *Interpreter) String() string {
 			}
 		}
 
-		if curFrame.ReturnValue != nil {
-			result += fmt.Sprintf("ReturnValue: %s\n", curFrame.ReturnValue.String())
+		if curFrame.ReturnValues != nil {
+			result += fmt.Sprintf("ReturnValues len=%d: ", len(curFrame.ReturnValues))
+			for _, retVal := range curFrame.ReturnValues {
+				result += fmt.Sprintf("%s, ", retVal.String())
+			}
+			result += "\n"
 		}
 	}
 

@@ -40,6 +40,8 @@ func (s *Simplifier) VisitUnaryOperation(expr *UnaryOperation) interface{} {
 	switch expr.Operator {
 	case UN_NEG:
 		return newUnary
+	case UN_XOR:
+		return newUnary
 	case UN_NOT:
 		switch e := operandSim.(type) {
 		case *BoolConstant:
@@ -50,13 +52,6 @@ func (s *Simplifier) VisitUnaryOperation(expr *UnaryOperation) interface{} {
 			}
 		}
 		return NewLogicalOperation([]SymbolicExpression{operandSim}, NOT)
-	case UN_XOR:
-		switch operandSim.Type() {
-		case IntType:
-			return NewBinaryOperation((NewUnaryOperation(operandSim, UN_NEG)), NewIntConstant(-1), SUB)
-		default:
-			return NewLogicalOperation([]SymbolicExpression{operandSim}, NOT)
-		}
 	}
 	return newUnary
 }
